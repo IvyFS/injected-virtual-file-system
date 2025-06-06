@@ -1,0 +1,17 @@
+[package]
+name = "agent"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Internal
+hooks = { workspace = true }
+shared-types = { workspace = true }
+
+# External
+frida-gum = { workspace = true }
+interprocess = { workspace = true }

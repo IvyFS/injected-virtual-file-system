@@ -1,0 +1,18 @@
+[package]
+name = "macros"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[lints.clippy]
+unused_imports ="allow"
+
+[dependencies]
+crabtime = { workspace = true }
+
+[dev-dependencies]
+# Internal
+shared-types = { workspace = true }
+
+# External
+frida-gum = { workspace = true }

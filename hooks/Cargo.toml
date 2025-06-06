@@ -1,0 +1,21 @@
+[package]
+name = "hooks"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Internal
+macros = { workspace = true }
+shared-types = { workspace = true }
+
+# External
+frida-gum = { workspace = true }
+interprocess = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+ref-cast = { workspace = true }
+win-api = { workspace = true }
+win-types = { workspace = true }
+windows-strings = { workspace = true }
+windows-version = { workspace = true }

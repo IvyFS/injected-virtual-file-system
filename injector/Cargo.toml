@@ -1,0 +1,19 @@
+[package]
+name = "injector"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Internal
+agent = { workspace = true }
+shared-types = { workspace = true }
+
+# External
+frida = { workspace = true }
+interprocess = { workspace = true }
+tokio = { workspace = true }
+toml = "0.8.22"
+serde = { version = "1.0.219", features = ["derive"] }
+
+[build-dependencies]
