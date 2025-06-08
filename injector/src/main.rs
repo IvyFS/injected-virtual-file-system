@@ -1,6 +1,5 @@
 use std::{
   ffi::CString,
-  fs::read_to_string,
   hash::{Hash, Hasher},
   io::{BufRead, BufReader},
   str::FromStr,
@@ -11,57 +10,30 @@ use frida::{Frida, Inject, Injector, SpawnOptions};
 use interprocess::local_socket::{
   GenericNamespaced, ListenerOptions, Stream, ToNsName, traits::ListenerExt,
 };
-use serde::Deserialize;
-use shared_types::{EntryData, Message};
+use shared_types::{EntryData, Message, config::InjectorConfig};
 
 static HOOK: &'static [u8] = include_bytes!(env!("DYLIB_PATH"));
 
 static FRIDA: LazyLock<Frida> = LazyLock::new(|| unsafe { Frida::obtain() });
-
-#[derive(Debug, Deserialize)]
-struct Config {
-  mount_point: String,
-
-  executable: String,
-  working_dir: Option<String>,
-  args: Vec<String>,
-}
 
 #[tokio::main]
 async fn main() {
   let device_manager = frida::DeviceManager::obtain(&FRIDA);
   let local_device = device_manager.get_local_device();
 
-  let config_path = std::env::args().nth(1).unwrap();
-  let config_str = read_to_string(config_path).unwrap();
-  let config: Config = toml::from_str(&config_str).unwrap();
-
-  // let args: Vec<String> = std::env::args().collect();
-  // let program = &args[1];
-
-  // if program.is_empty() {
-  //   println!("No path given for executable");
-  //   return;
-  // }
+  let config = InjectorConfig::from_args();
+  let target_config = config.target;
 
   if let Ok(mut device) = local_device {
     println!("[*] Frida version: {}", frida::Frida::version());
     println!("[*] Device name: {}", device.get_name());
 
-    let mut options = SpawnOptions::default().argv(config.args);
+    let mut options = SpawnOptions::default().argv(target_config.args);
 
-    if let Some(working_dir) = config.working_dir {
-      options = options.cwd(CString::from_str(&working_dir).unwrap())
+    if let Some(working_dir) = target_config.working_dir {
+      options = options.cwd(&CString::from_str(&working_dir.to_string_lossy()).unwrap())
     }
-    // if args.len() >= 3 {
-    //   if let [.., target_args] = &args[..] {
-    //     options = options.argv(target_args.split(" "))
-    //   }
-    // }
-    // if args.len() >= 4 && !&args[2].is_empty() {
-    //   options = options.cwd(CString::new(args[2].bytes().collect::<Vec<_>>()).unwrap())
-    // }
-    let pid = device.spawn(config.executable, &options).unwrap();
+    let pid = device.spawn(target_config.executable, &options).unwrap();
 
     let mut hasher = std::hash::DefaultHasher::new();
     std::process::id().hash(&mut hasher);
@@ -87,7 +59,7 @@ async fn main() {
 
     let entry_data = EntryData {
       socket_name: name,
-      mount_point: config.mount_point,
+      fs_config: config.virtual_filesystem,
     }
     .encode()
     .unwrap();

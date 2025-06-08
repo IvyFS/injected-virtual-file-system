@@ -768,10 +768,8 @@ dependencies = [
  "agent",
  "frida",
  "interprocess",
- "serde",
  "shared-types",
  "tokio",
- "toml",
 ]
 
 [[package]]
@@ -1483,6 +1481,7 @@ dependencies = [
  "serde_json",
  "strum",
  "thiserror",
+ "toml",
  "windows",
 ]
 

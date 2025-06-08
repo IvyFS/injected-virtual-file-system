@@ -1,5 +1,7 @@
-mount_point = ""
+[virtual_filesystem]
+mount_point = "D:\\Games\\Starsector\\mods"
 
+[target]
 executable = "D:\\Games\\Starsector\\jre\\bin\\java.exe"
 working_dir = "D:\\Games\\Starsector\\starsector-core"
 args = [

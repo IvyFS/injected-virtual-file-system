@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr, sync::Mutex};
+use std::path::PathBuf;
 
 use frida_gum::{Gum, Process};
 use interprocess::local_socket::Stream;
@@ -35,9 +35,9 @@ pub struct Patcher<'a> {
 }
 
 impl<'a> Patcher<'a> {
-  pub fn init(gum: &'a Gum, socket: Stream, mount_point: String) -> Patcher<'a> {
+  pub fn init(gum: &'a Gum, socket: Stream, mount_point: PathBuf) -> Patcher<'a> {
     init_logger(socket);
-    MOUNT_POINT.get_or_init(|| Mutex::new(PathBuf::from_str(&mount_point).unwrap()));
+    *MOUNT_POINT.lock().unwrap() = mount_point;
     Patcher {
       _sealed: Sealed,
       gum,

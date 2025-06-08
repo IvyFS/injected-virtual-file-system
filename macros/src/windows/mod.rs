@@ -12,6 +12,7 @@ pub fn generate_patch(
   const RETURN: &str = "\u{002D}>";
   const QUOTE: char = '\u{0022}';
   const SPACE: char = '\u{0020}';
+  // const LIFETIME_A: &str = "\u{003C}'a\u{003E}";
 
   let function_name: String = expand!($name).to_owned();
 
@@ -93,7 +94,7 @@ pub fn generate_patch(
       };
 
       use frida_gum::{Gum, Module, NativePointer, interceptor::Interceptor};
-      use shared_types::{ErrorContext, HookError, Message};
+      use shared_types::{ErrorContext, HookError, Message, unsafe_types::UnsafeSyncCell};
 
       use crate::log::*;
 
@@ -103,7 +104,12 @@ pub fn generate_patch(
 
       {{target_func_signature}};
 
-      pub static {{SPACE}}{{original_lock}}: OnceLock<Mutex<{{function_name}}Func>> = OnceLock::new();
+      pub static {{SPACE}}{{original_lock}}: UnsafeSyncCell<{{function_name}}Func> =
+        UnsafeSyncCell::new({{detour_fn_name}});
+
+      pub(super) unsafe fn get_original<'a>() {{RETURN}} &'a{{SPACE}}{{function_name}}Func {
+        &*{{original_lock}}.get()
+      }
 
       pub fn {{snake_name}}(gum: &Gum, module: &Module, _: &str) {{RETURN}} Result<(), HookError> {
         let mut interceptor = Interceptor::obtain(&gum);
@@ -131,9 +137,12 @@ pub fn generate_patch(
           )
           .with_context({{QUOTE}}Failed to replace{{SPACE}}{{function_name}}{{QUOTE}})?;
 
-        let transmutate = || unsafe { std::mem::transmute(original) };
-        let ptr_ref = {{original_lock}}.get_or_init(|| Mutex::new(transmutate()));
-        *ptr_ref.lock()? = transmutate();
+        // let transmutate = || unsafe { std::mem::transmute(original) };
+        // let ptr_ref = {{original_lock}}.get_or_init(|| Mutex::new(transmutate()));
+        // *ptr_ref.lock()? = transmutate();
+        unsafe {
+          *{{original_lock}}.get() = std::mem::transmute(original);
+        }
 
         Ok(())
       }

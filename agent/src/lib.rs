@@ -32,7 +32,7 @@ unsafe fn injected_function(data: *const std::os::raw::c_char, stay_resident: *m
     format!("{acc}\n{module}")
   });
 
-  let patcher = Patcher::init(gum, stream, data.mount_point);
+  let patcher = Patcher::init(gum, stream, data.fs_config.mount_point);
   if let Err(err) = patcher.patch_functions() {
     patcher.log(Message::Error(err.to_string()))
   }

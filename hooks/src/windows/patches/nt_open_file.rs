@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use macros::{crabtime, generate_patch};
 use shared_types::Message;
 use win_api::{
@@ -9,7 +11,10 @@ use win_api::{
 };
 
 use crate::log::*;
-use crate::windows::handles::HandleMap;
+use crate::{
+  virtual_paths::MOUNT_POINT,
+  windows::handles::{HandleMap, ObjectAttributesExt},
+};
 pub use nt_open_file::*;
 
 generate_patch!(
@@ -35,6 +40,11 @@ pub unsafe extern "system" fn detour_nt_open_file(
 ) -> NTSTATUS {
   trace!(unsafe {
     HandleMap::update_handles(*filehandle, objectattributes)?;
+
+    let path_str = (&*objectattributes).path()?;
+    if Path::new(&path_str).starts_with(MOUNT_POINT.lock()?.as_path()) {
+      log_info(format!("(Sub-)path of mount point: {path_str}"));
+    }
   });
 
   if let Some(attrs) = unsafe { objectattributes.as_ref() } {
@@ -75,11 +85,7 @@ pub unsafe extern "system" fn detour_nt_open_file(
           SecurityQualityOfService: attrs.SecurityQualityOfService,
         };
 
-        let original = ORIGINAL_NT_OPEN_FILE
-          .get()
-          .expect("Get original NtOpenFile function ptr")
-          .lock()
-          .expect("Lock mutex on NtOpenFile ptr");
+        let original = unsafe { get_original() };
 
         let res = unsafe {
           original(
@@ -99,11 +105,7 @@ pub unsafe extern "system" fn detour_nt_open_file(
     }
   }
 
-  let original = ORIGINAL_NT_OPEN_FILE
-    .get()
-    .expect("Get original NtOpenFile function ptr")
-    .lock()
-    .expect("Lock mutex on NtOpenFile ptr");
+  let original = unsafe { get_original() };
 
   unsafe {
     original(

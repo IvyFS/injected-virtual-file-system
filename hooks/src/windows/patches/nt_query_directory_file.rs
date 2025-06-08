@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use std::{ffi::c_void, path::Path};
 
 use macros::{crabtime, generate_patch};
 
@@ -15,6 +15,7 @@ pub use nt_query_directory_file_ex::*;
 
 use crate::{
   log::{log_info, trace},
+  virtual_paths::MOUNT_POINT,
   windows::handles::path_from_handle,
 };
 
@@ -50,17 +51,14 @@ unsafe extern "system" fn detour_nt_query_directory_file(
   restart_scan: bool,
 ) -> NTSTATUS {
   unsafe {
-    let original = ORIGINAL_NT_QUERY_DIRECTORY_FILE
-      .get()
-      .unwrap()
-      .lock()
-      .unwrap();
+    let original = nt_query_directory_file::get_original();
 
     trace!({
-      log_info(format!(
-        "NtQueryDirectoryFile: {}",
-        path_from_handle(&handle)?
-      ));
+      let path_str = path_from_handle(&handle)?;
+
+      if Path::new(&path_str).starts_with(MOUNT_POINT.lock()?.as_path()) {
+        log_info(format!("(Sub-)path of mount point: {path_str}"));
+      }
     });
 
     original(
@@ -109,17 +107,14 @@ unsafe extern "system" fn detour_nt_query_directory_file_ex(
   filename: *const UNICODE_STRING,
 ) -> NTSTATUS {
   unsafe {
-    let original = ORIGINAL_NT_QUERY_DIRECTORY_FILE_EX
-      .get()
-      .unwrap()
-      .lock()
-      .unwrap();
+    let original = nt_query_directory_file_ex::get_original();
 
     trace!({
-      log_info(format!(
-        "NtQueryDirectoryFileEx: {}",
-        path_from_handle(&handle)?
-      ));
+      let path_str = path_from_handle(&handle)?;
+
+      if Path::new(&path_str).starts_with(MOUNT_POINT.lock()?.as_path()) {
+        log_info(format!("(Sub-)path of mount point: {path_str}"));
+      }
     });
 
     original(

@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use std::{ffi::c_void, path::Path};
 
 use macros::{crabtime, generate_patch};
 pub use win_api::{
@@ -14,7 +14,10 @@ pub use win_api::{
 };
 
 use crate::log::*;
-use crate::windows::handles::HandleMap;
+use crate::{
+  virtual_paths::MOUNT_POINT,
+  windows::handles::{HandleMap, ObjectAttributesExt},
+};
 pub use nt_create_file::*;
 
 generate_patch!(
@@ -48,17 +51,17 @@ unsafe extern "system" fn detour_nt_create_file(
   _9: *const c_void,
   _10: u32,
 ) -> NTSTATUS {
-  let original = ORIGINAL_NT_CREATE_FILE
-    .get()
-    .expect("Get original NtCreateFile function ptr")
-    .lock()
-    .expect("Lock mutex on NtCreateFile ptr");
+  let original = unsafe { get_original() };
 
   let res = unsafe { original(handle, _1, attrs, _3, _4, _5, _6, _7, _8, _9, _10) };
 
   trace!(unsafe {
     if res.is_ok() {
       HandleMap::update_handles(*handle, attrs)?;
+    }
+    let path_str = (&*attrs).path()?;
+    if Path::new(&path_str).starts_with(MOUNT_POINT.lock()?.as_path()) {
+      log_info(format!("(Sub-)path of mount point: {path_str}"));
     }
   });
 

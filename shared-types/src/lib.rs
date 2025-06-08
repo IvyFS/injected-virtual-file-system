@@ -2,9 +2,13 @@ pub use bincode::error::{DecodeError, EncodeError};
 use bincode::{decode_from_std_read, encode_into_std_write};
 
 mod errors;
+pub mod unsafe_types;
+pub mod config;
 
 pub use errors::*;
 use serde::{Deserialize, Serialize};
+
+use crate::config::VirtualFsConfig;
 
 #[derive(Debug, PartialEq, bincode::Encode, bincode::Decode, strum::Display)]
 pub enum Message {
@@ -32,10 +36,10 @@ impl Message {
   }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct EntryData {
   pub socket_name: String,
-  pub mount_point: String,
+  pub fs_config: VirtualFsConfig,
 }
 
 impl EntryData {
