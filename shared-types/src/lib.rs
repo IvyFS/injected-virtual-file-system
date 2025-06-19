@@ -1,14 +1,18 @@
+use std::time::Duration;
+
 pub use bincode::error::{DecodeError, EncodeError};
 use bincode::{decode_from_std_read, encode_into_std_write};
 
+pub mod config;
 mod errors;
 pub mod unsafe_types;
-pub mod config;
 
 pub use errors::*;
 use serde::{Deserialize, Serialize};
 
 use crate::config::VirtualFsConfig;
+
+pub const DEFAULT_HEARTBEAT: Duration = Duration::from_millis(500);
 
 #[derive(Debug, PartialEq, bincode::Encode, bincode::Decode, strum::Display)]
 pub enum Message {
@@ -22,6 +26,8 @@ pub enum Message {
   DebugFileOpened(String),
   #[strum(to_string = "Finished patching target process")]
   FinishedPatching,
+  ShutdownCountdown(usize),
+  ShutdownFinal,
   #[strum(to_string = "Error: Hook error: {0}")]
   Error(String),
 }
@@ -38,7 +44,9 @@ impl Message {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EntryData {
-  pub socket_name: String,
+  #[serde(rename = "sn")]
+  pub socket_name: Option<String>,
+  #[serde(rename = "fs")]
   pub fs_config: VirtualFsConfig,
 }
 

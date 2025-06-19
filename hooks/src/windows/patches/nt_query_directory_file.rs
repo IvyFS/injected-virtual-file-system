@@ -1,23 +1,43 @@
-use std::{ffi::c_void, path::Path};
+use std::{ffi::c_void, sync::LazyLock};
 
+use dashmap::DashMap;
 use macros::{crabtime, generate_patch};
 
+use shared_types::HookError;
 use win_api::{
-  Wdk::Storage::FileSystem::FILE_INFORMATION_CLASS,
+  Wdk::{Storage::FileSystem::FILE_INFORMATION_CLASS, System::SystemServices::SL_RESTART_SCAN},
   Win32::{
-    Foundation::{HANDLE, NTSTATUS, UNICODE_STRING},
+    Foundation::{HANDLE, NTSTATUS, STATUS_NO_SUCH_FILE, UNICODE_STRING},
     System::IO::{IO_STATUS_BLOCK, PIO_APC_ROUTINE},
   },
 };
 
-pub use nt_query_directory_file::*;
-pub use nt_query_directory_file_ex::*;
-
 use crate::{
-  log::{log_info, trace},
-  virtual_paths::MOUNT_POINT,
-  windows::handles::path_from_handle,
+  extension_traits::DashExt,
+  log::{logfmt_dbg, trace_expr},
+  windows::os_types::handles::{
+    get_virtual_path, into_handle, std_open_dir_handle_unhooked, Handle, HANDLE_MAP
+  },
 };
+
+#[derive(Debug, Default)]
+struct QueryMap(DashMap<Handle, Handle>);
+
+impl QueryMap {
+  fn get_or_insert_query<I: Into<Handle>>(
+    &self,
+    real_ptr: into_handle!(),
+    make_virtual_ptr: impl FnOnce() -> Result<I, HookError>,
+  ) -> Result<dashmap::mapref::one::RefMut<Handle, Handle>, HookError> {
+    self
+      .0
+      .get_or_try_insert_with(real_ptr.into(), || make_virtual_ptr().map(Into::into))
+  }
+
+  fn delete_query(&self, real_ptr: into_handle!()) {
+    self.0.remove(&real_ptr.into());
+  }
+}
 
 generate_patch!(
   "NtQueryDirectoryFile",
@@ -50,31 +70,56 @@ unsafe extern "system" fn detour_nt_query_directory_file(
   filename: *const UNICODE_STRING,
   restart_scan: bool,
 ) -> NTSTATUS {
-  unsafe {
-    let original = nt_query_directory_file::get_original();
+  static QUERY_MAP: LazyLock<QueryMap> = LazyLock::new(Default::default);
 
-    trace!({
-      let path_str = path_from_handle(&handle)?;
-
-      if Path::new(&path_str).starts_with(MOUNT_POINT.lock()?.as_path()) {
-        log_info(format!("(Sub-)path of mount point: {path_str}"));
+  let res = trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
+    let original_fn = nt_query_directory_file::original();
+    let res = if let Some(virtual_path) = HANDLE_MAP
+      .get_by_handle(handle)
+      .map(|p| get_virtual_path(p.path.as_path()))
+      .transpose()?
+      .flatten()
+    {
+      if restart_scan {
+        QUERY_MAP.delete_query(handle);
       }
-    });
 
-    original(
-      handle,
-      event,
-      apc_routine,
-      apc_context,
-      io_status_block,
-      file_information,
-      length,
-      file_information_class,
-      return_single_entry,
-      filename,
-      restart_scan,
-    )
-  }
+      let virtual_handle = QUERY_MAP
+        .get_or_insert_query(handle, || std_open_dir_handle_unhooked(virtual_path.path))?;
+
+      original_fn(
+        **virtual_handle,
+        event,
+        apc_routine,
+        apc_context,
+        io_status_block,
+        file_information,
+        length,
+        file_information_class,
+        return_single_entry,
+        filename,
+        restart_scan,
+      )
+    } else {
+      original_fn(
+        handle,
+        event,
+        apc_routine,
+        apc_context,
+        io_status_block,
+        file_information,
+        length,
+        file_information_class,
+        return_single_entry,
+        filename,
+        restart_scan,
+      )
+    };
+
+    Ok(res)
+  });
+
+  res
 }
 
 generate_patch!(
@@ -106,28 +151,53 @@ unsafe extern "system" fn detour_nt_query_directory_file_ex(
   query_flags: u32,
   filename: *const UNICODE_STRING,
 ) -> NTSTATUS {
-  unsafe {
-    let original = nt_query_directory_file_ex::get_original();
+  static QUERY_MAP: LazyLock<QueryMap> = LazyLock::new(Default::default);
 
-    trace!({
-      let path_str = path_from_handle(&handle)?;
-
-      if Path::new(&path_str).starts_with(MOUNT_POINT.lock()?.as_path()) {
-        log_info(format!("(Sub-)path of mount point: {path_str}"));
+  let res = trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
+    let original_fn = nt_query_directory_file_ex::original();
+    let res = if let Some(virtual_path) = HANDLE_MAP
+      .get_by_handle(handle)
+      .map(|p| get_virtual_path(p.path.as_path()))
+      .transpose()?
+      .flatten()
+    {
+      logfmt_dbg!("{:?}", virtual_path.original);
+      if query_flags & SL_RESTART_SCAN > 0 {
+        QUERY_MAP.delete_query(handle);
       }
-    });
 
-    original(
-      handle,
-      event,
-      apc_routine,
-      apc_context,
-      io_status_block,
-      file_information,
-      length,
-      file_information_class,
-      query_flags,
-      filename,
-    )
-  }
+      let virtual_handle = QUERY_MAP
+        .get_or_insert_query(handle, || std_open_dir_handle_unhooked(virtual_path.path))?;
+
+      original_fn(
+        **virtual_handle,
+        event,
+        apc_routine,
+        apc_context,
+        io_status_block,
+        file_information,
+        length,
+        file_information_class,
+        query_flags,
+        filename,
+      )
+    } else {
+      original_fn(
+        handle,
+        event,
+        apc_routine,
+        apc_context,
+        io_status_block,
+        file_information,
+        length,
+        file_information_class,
+        query_flags,
+        filename,
+      )
+    };
+
+    Ok(res)
+  });
+
+  res
 }

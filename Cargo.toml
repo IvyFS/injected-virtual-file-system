@@ -19,8 +19,13 @@ shared-types = { path = "shared-types" }
 
 # External
 crabtime = { git = "https://github.com/wdanilo/crabtime.git", branch = "main" }
-frida = { version = "0.16.10", features = ["auto-download"] }
-frida-gum = { version = "0.16.10", features = [
+frida = { git = "https://github.com/atlanticaccent/frida-rust.git", branch = "add-device-output-listener", features = [
+  "auto-download",
+] }
+frida-sys = { git = "https://github.com/atlanticaccent/frida-rust.git", branch = "add-device-output-listener", features = [
+  "auto-download",
+] }
+frida-gum = { git = "https://github.com/atlanticaccent/frida-rust.git", branch = "add-device-output-listener", features = [
   "auto-download",
   "libc",
   "module-names",
@@ -29,10 +34,13 @@ frida-gum = { version = "0.16.10", features = [
 ] }
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
-interprocess = "2.2.3"
+interprocess = { version = "2.2.3", features = ["tokio"] }
 ref-cast = "1.0.24"
 toml = "0.8.22"
 serde = { version = "1.0.219", features = ["derive"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-appender = "0.2.3"
 
 # Windows specific
 win-api = { package = "windows", version = "0.61", features = [

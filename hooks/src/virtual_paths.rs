@@ -1,12 +1,16 @@
 use std::{
   collections::HashMap,
   path::PathBuf,
-  sync::{LazyLock, Mutex, MutexGuard},
+  sync::{LazyLock, Mutex, MutexGuard, RwLock},
 };
 
 use shared_types::HookError;
 
-pub static MOUNT_POINT: LazyLock<Mutex<PathBuf>> = LazyLock::new(|| Mutex::new(PathBuf::new()));
+#[cfg(windows)]
+pub mod windows;
+
+pub static MOUNT_POINT: LazyLock<RwLock<PathBuf>> = LazyLock::new(|| RwLock::new(PathBuf::new()));
+pub static VIRTUAL_ROOT: LazyLock<RwLock<PathBuf>> = LazyLock::new(|| RwLock::new(PathBuf::new()));
 
 static VIRTUAL_PATHS: LazyLock<Mutex<HashMap<PathBuf, PathBuf>>> =
   LazyLock::new(|| Mutex::new(HashMap::new()));

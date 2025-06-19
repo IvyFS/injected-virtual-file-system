@@ -1,4 +1,6 @@
-use std::{error::Error, sync::PoisonError};
+#[cfg(windows)]
+use std::ffi::OsString;
+use std::{error::Error, path::PathBuf, sync::PoisonError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum HookError {
@@ -31,6 +33,21 @@ pub enum HookError {
   #[cfg(windows)]
   #[error("Failed to get path from file handle")]
   PathFromFileHandle,
+  #[cfg(windows)]
+  #[error("Failed to init UNICODE_STRING from {0:?}")]
+  UnicodeInit(OsString),
+  #[cfg(windows)]
+  #[error("windows-core error: {0:?}")]
+  WindowsCore(#[source] Box<dyn Error>),
+
+  #[error("failed to canonicalize path: {path} with err: {cause}")]
+  Canonicalize {
+    path: PathBuf,
+    cause: std::io::Error,
+  },
+
+  #[error("Other: {0}")]
+  Other(String)
 }
 
 impl<T: 'static> From<PoisonError<T>> for HookError {

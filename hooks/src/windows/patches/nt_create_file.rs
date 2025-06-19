@@ -1,6 +1,8 @@
-use std::{ffi::c_void, path::Path};
+use std::ffi::c_void;
 
 use macros::{crabtime, generate_patch};
+use shared_types::{HookError, Message};
+use win_api::Win32::Foundation::STATUS_NO_SUCH_FILE;
 pub use win_api::{
   Wdk::{
     Foundation::OBJECT_ATTRIBUTES,
@@ -13,12 +15,10 @@ pub use win_api::{
   },
 };
 
-use crate::log::*;
 use crate::{
-  virtual_paths::MOUNT_POINT,
-  windows::handles::{HandleMap, ObjectAttributesExt},
+  log::*,
+  windows::os_types::handles::{DO_NOT_HOOK, HandleMap, ObjectAttributesExt},
 };
-pub use nt_create_file::*;
 
 generate_patch!(
   "NtCreateFile",
@@ -44,25 +44,40 @@ unsafe extern "system" fn detour_nt_create_file(
   attrs: *const OBJECT_ATTRIBUTES,
   _3: *mut IO_STATUS_BLOCK,
   _4: *const i64,
-  _5: FILE_FLAGS_AND_ATTRIBUTES,
-  _6: FILE_SHARE_MODE,
+  mut flags_and_attributes: FILE_FLAGS_AND_ATTRIBUTES,
+  share_mode: FILE_SHARE_MODE,
   _7: NTCREATEFILE_CREATE_DISPOSITION,
   _8: NTCREATEFILE_CREATE_OPTIONS,
   _9: *const c_void,
   _10: u32,
 ) -> NTSTATUS {
-  let original = unsafe { get_original() };
+  let res = trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
+    if flags_and_attributes.contains(DO_NOT_HOOK) {
+      flags_and_attributes.0 ^= DO_NOT_HOOK.0;
+      logfmt_dbg!("Got DO_NOT_HOOK for path {:?}", attrs.path());
+    }
 
-  let res = unsafe { original(handle, _1, attrs, _3, _4, _5, _6, _7, _8, _9, _10) };
+    let original_fn = original();
+    let res = original_fn(
+      handle,
+      _1,
+      attrs,
+      _3,
+      _4,
+      flags_and_attributes,
+      share_mode,
+      _7,
+      _8,
+      _9,
+      _10,
+    );
 
-  trace!(unsafe {
     if res.is_ok() {
-      HandleMap::update_handles(*handle, attrs)?;
+      log_lossy(Message::DebugInfo(format!("nt_create {:?}", attrs.path())));
+      HandleMap::insert_by_object_attributes(*handle, attrs)?;
     }
-    let path_str = (&*attrs).path()?;
-    if Path::new(&path_str).starts_with(MOUNT_POINT.lock()?.as_path()) {
-      log_info(format!("(Sub-)path of mount point: {path_str}"));
-    }
+
+    Ok(res)
   });
 
   res

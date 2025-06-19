@@ -12,6 +12,12 @@ shared-types = { workspace = true }
 # External
 frida = { workspace = true }
 interprocess = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+sysinfo = { version = "0.35.2", default-features = false, features = [
+  "system",
+] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-appender = { workspace = true }
 
 [build-dependencies]

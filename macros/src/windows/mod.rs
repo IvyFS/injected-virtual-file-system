@@ -69,11 +69,7 @@ pub fn generate_patch(
       )$({{RETURN}} $ret)? {
         log(Message::DebugDefaultIntercept({{debug}}.to_owned()));
 
-        let original = {{original_lock}}
-          .get()
-          .expect({{QUOTE}}Get original{{SPACE}}{{function_name}}{{SPACE}}function ptr{{QUOTE}})
-          .lock()
-          .expect({{QUOTE}}Lock mutex on{{SPACE}}{{function_name}}{{SPACE}}ptr{{QUOTE}});
+        let original = original();
 
         unsafe {
           original({{bindings}})
@@ -86,6 +82,8 @@ pub fn generate_patch(
   };
 
   crabtime::output! {
+    pub use {{snake_name}}::*;
+
     pub mod {{snake_name}} {
       use std::{
         os::raw::c_void,
@@ -107,7 +105,7 @@ pub fn generate_patch(
       pub static {{SPACE}}{{original_lock}}: UnsafeSyncCell<{{function_name}}Func> =
         UnsafeSyncCell::new({{detour_fn_name}});
 
-      pub(super) unsafe fn get_original<'a>() {{RETURN}} &'a{{SPACE}}{{function_name}}Func {
+      pub unsafe fn original<'a>() {{RETURN}} &'a{{SPACE}}{{function_name}}Func {
         &*{{original_lock}}.get()
       }
 

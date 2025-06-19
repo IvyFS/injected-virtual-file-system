@@ -12,9 +12,14 @@ shared-types = { workspace = true }
 # External
 frida-gum = { workspace = true }
 interprocess = { workspace = true }
+dashmap = "6.1.0"
+ext-trait = "2.0.0"
+crossbeam-queue = "0.3.12"
 
 [target.'cfg(windows)'.dependencies]
+dunce = "1.0.5"
 ref-cast = { workspace = true }
+widestring = "1.2.0"
 win-api = { workspace = true }
 win-types = { workspace = true }
 windows-strings = { workspace = true }
