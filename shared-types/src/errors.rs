@@ -46,8 +46,16 @@ pub enum HookError {
     cause: std::io::Error,
   },
 
+  #[error("std::io::Error {0}")]
+  StdIo(#[from] std::io::Error),
+  #[error("error: {source}\nadditional context: {context}")]
+  WithContext {
+    #[source]
+    source: Box<dyn Error>,
+    context: String,
+  },
   #[error("Other: {0}")]
-  Other(String)
+  Other(String),
 }
 
 impl<T: 'static> From<PoisonError<T>> for HookError {
@@ -57,16 +65,28 @@ impl<T: 'static> From<PoisonError<T>> for HookError {
 }
 
 pub trait ErrorContext<T> {
-  fn with_context(self, context: &str) -> Result<T, HookError>;
+  fn with_context<M: ToString>(self, context: impl Fn() -> M) -> Result<T, HookError>;
 }
 
 impl<T> ErrorContext<T> for Result<T, frida_gum::Error> {
-  fn with_context(self, context: &str) -> Result<T, HookError> {
+  fn with_context<M: ToString>(self, context: impl Fn() -> M) -> Result<T, HookError> {
     match self {
       Ok(val) => Ok(val),
       Err(cause) => Err(HookError::GumError {
-        context: context.to_owned(),
+        context: context().to_string(),
         cause,
+      }),
+    }
+  }
+}
+
+impl<T, E: Into<HookError>> ErrorContext<T> for Result<T, E> {
+  fn with_context<M: ToString>(self, context: impl Fn() -> M) -> Result<T, HookError> {
+    match self {
+      Ok(val) => Ok(val),
+      Err(err) => Err(HookError::WithContext {
+        source: Box::new(err.into()),
+        context: context().to_string(),
       }),
     }
   }

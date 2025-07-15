@@ -1,17 +1,11 @@
-use macros::{crabtime, generate_patch};
-use shared_types::Message;
+use proc_macros::patch_fn;
 use win_api::{
   Wdk::Foundation::OBJECT_INFORMATION_CLASS,
   Win32::Foundation::{HANDLE, NTSTATUS},
 };
 
-use crate::{
-  log::{log_info, log_lossy},
-  windows::os_types::handles::{HANDLE_MAP, HandleMap, path_from_handle},
-};
-
-generate_patch!(
-  "NtQueryObject",
+patch_fn!(
+  NtQueryObject,
   (
     HANDLE,
     OBJECT_INFORMATION_CLASS,
@@ -39,10 +33,6 @@ unsafe extern "system" fn detour_nt_query_object(
       information_length,
       return_length,
     );
-
-    if let Some(info) = HANDLE_MAP.get_by_handle(handle) {
-      // log_lossy(Message::DebugInfo(format!("Query object: {}", info.path)));
-    }
 
     res
   }

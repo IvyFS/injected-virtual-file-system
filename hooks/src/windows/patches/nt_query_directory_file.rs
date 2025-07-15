@@ -1,8 +1,8 @@
 use std::{ffi::c_void, sync::LazyLock};
 
 use dashmap::DashMap;
-use macros::{crabtime, generate_patch};
 
+use proc_macros::patch_fn;
 use shared_types::HookError;
 use win_api::{
   Wdk::{Storage::FileSystem::FILE_INFORMATION_CLASS, System::SystemServices::SL_RESTART_SCAN},
@@ -15,32 +15,37 @@ use win_api::{
 use crate::{
   extension_traits::DashExt,
   log::{logfmt_dbg, trace_expr},
-  windows::os_types::handles::{
-    get_virtual_path, into_handle, std_open_dir_handle_unhooked, Handle, HANDLE_MAP
+  windows::{
+    os_types::handles::{
+      HANDLE_MAP, Handle, get_virtual_path, into_handle, std_open_dir_handle_unhooked,
+    },
+    patches::{FIND_FIRST_FILE_ACTIVE, nt_close_unhooked},
   },
 };
 
+pub static QUERY_MAP: LazyLock<QueryMap> = LazyLock::new(Default::default);
+
 #[derive(Debug, Default)]
-struct QueryMap(DashMap<Handle, Handle>);
+pub struct QueryMap(DashMap<Handle, Handle>);
 
 impl QueryMap {
   fn get_or_insert_query<I: Into<Handle>>(
     &self,
     real_ptr: into_handle!(),
     make_virtual_ptr: impl FnOnce() -> Result<I, HookError>,
-  ) -> Result<dashmap::mapref::one::RefMut<Handle, Handle>, HookError> {
+  ) -> Result<dashmap::mapref::one::RefMut<'_, Handle, Handle>, HookError> {
     self
       .0
       .get_or_try_insert_with(real_ptr.into(), || make_virtual_ptr().map(Into::into))
   }
 
-  fn delete_query(&self, real_ptr: into_handle!()) {
-    self.0.remove(&real_ptr.into());
+  pub fn remove_query(&self, real_ptr: into_handle!()) -> Option<(Handle, Handle)> {
+    self.0.remove(&real_ptr.into())
   }
 }
 
-generate_patch!(
-  "NtQueryDirectoryFile",
+patch_fn!(
+  NtQueryDirectoryFile,
   (
     HANDLE,
     HANDLE,
@@ -70,18 +75,22 @@ unsafe extern "system" fn detour_nt_query_directory_file(
   filename: *const UNICODE_STRING,
   restart_scan: bool,
 ) -> NTSTATUS {
-  static QUERY_MAP: LazyLock<QueryMap> = LazyLock::new(Default::default);
-
+  FIND_FIRST_FILE_ACTIVE.with(|flag| {
+    if flag.load(std::sync::atomic::Ordering::Relaxed)
+      && let Some(info) = HANDLE_MAP.get_by_handle(handle)
+    {
+      logfmt_dbg!("path: {:?}", info.path)
+    }
+  });
   let res = trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
     let original_fn = nt_query_directory_file::original();
-    let res = if let Some(virtual_path) = HANDLE_MAP
-      .get_by_handle(handle)
-      .map(|p| get_virtual_path(p.path.as_path()))
+    let res = if let Some(virtual_path) = dbg!(HANDLE_MAP.get_by_handle(handle))
+      .map(|p| dbg!(get_virtual_path(p.path.as_path())))
       .transpose()?
       .flatten()
     {
-      if restart_scan {
-        QUERY_MAP.delete_query(handle);
+      if restart_scan && let Some((_, query_handle)) = QUERY_MAP.remove_query(handle) {
+        nt_close_unhooked(*query_handle)
       }
 
       let virtual_handle = QUERY_MAP
@@ -122,8 +131,8 @@ unsafe extern "system" fn detour_nt_query_directory_file(
   res
 }
 
-generate_patch!(
-  "NtQueryDirectoryFileEx",
+patch_fn!(
+  NtQueryDirectoryFileEx,
   (
     HANDLE,
     HANDLE,
@@ -151,19 +160,23 @@ unsafe extern "system" fn detour_nt_query_directory_file_ex(
   query_flags: u32,
   filename: *const UNICODE_STRING,
 ) -> NTSTATUS {
-  static QUERY_MAP: LazyLock<QueryMap> = LazyLock::new(Default::default);
-
   let res = trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
     let original_fn = nt_query_directory_file_ex::original();
     let res = if let Some(virtual_path) = HANDLE_MAP
       .get_by_handle(handle)
+      .inspect(|info| {
+        if info.rerouted {
+          logfmt_dbg!("{:?}", info.path)
+        }
+      })
       .map(|p| get_virtual_path(p.path.as_path()))
       .transpose()?
       .flatten()
     {
-      logfmt_dbg!("{:?}", virtual_path.original);
-      if query_flags & SL_RESTART_SCAN > 0 {
-        QUERY_MAP.delete_query(handle);
+      if query_flags & SL_RESTART_SCAN > 0
+        && let Some((_, query_handle)) = QUERY_MAP.remove_query(handle)
+      {
+        nt_close_unhooked(*query_handle)
       }
 
       let virtual_handle = QUERY_MAP
@@ -196,6 +209,10 @@ unsafe extern "system" fn detour_nt_query_directory_file_ex(
       )
     };
 
+    if let Some(info) = HANDLE_MAP.get_by_handle(handle) {
+      logfmt_dbg!("filename filter: {:?}", filename.as_ref().map(|filter| filter.Buffer.to_string()));
+      logfmt_dbg!("{:?} res: {:x}", info.path, res.0);
+    }
     Ok(res)
   });
 

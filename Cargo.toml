@@ -1,5 +1,12 @@
 [workspace]
-members = ["agent", "demo", "hooks", "injector", "macros", "shared-types"]
+members = [
+  "agent",
+  "integration",
+  "hooks",
+  "injector",
+  "shared-types",
+  "proc-macros",
+]
 resolver = "3"
 
 [workspace.metadata]
@@ -14,8 +21,9 @@ authors = ["AtlanticAccent <iain@laird.org>"]
 # Internal
 agent = { path = "agent" }
 hooks = { path = "hooks" }
-macros = { path = "macros" }
 shared-types = { path = "shared-types" }
+injector = { path = "injector" }
+proc-macros = { path = "proc-macros" }
 
 # External
 crabtime = { git = "https://github.com/wdanilo/crabtime.git", branch = "main" }
@@ -39,12 +47,18 @@ ref-cast = "1.0.24"
 toml = "0.8.22"
 serde = { version = "1.0.219", features = ["derive"] }
 tracing = "0.1.41"
+tracing-core = "0.1.34"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing-appender = "0.2.3"
+bincode = "2.0.1"
+clap = { version = "4.5.39", features = ["derive"] }
 
 # Windows specific
+widestring = "1.2.0"
 win-api = { package = "windows", version = "0.61", features = [
   "Wdk_Foundation",
+  "Wdk_System",
+  "Wdk_System_SystemServices",
   "Wdk_Storage",
   "Wdk_Storage_FileSystem",
   "Win32_Storage_FileSystem",

@@ -2,12 +2,14 @@ use frida_gum::{Gum, Module};
 use shared_types::HookError;
 
 mod find_first_file;
+mod nt_close;
 mod nt_create_file;
 mod nt_open_file;
 mod nt_query_directory_file;
 mod nt_query_object;
 
 pub(crate) use find_first_file::*;
+pub(crate) use nt_close::*;
 pub(crate) use nt_create_file::*;
 pub(crate) use nt_open_file::*;
 pub(crate) use nt_query_directory_file::*;
@@ -15,7 +17,7 @@ pub(crate) use nt_query_object::*;
 
 pub(crate) type FuncPatcher = fn(&Gum, &Module, &str) -> Result<(), HookError>;
 
-pub static WIN32_TARGETS: [(&'static str, Option<FuncPatcher>); 34] = [
+pub static WIN32_TARGETS: [(&str, Option<FuncPatcher>); 34] = [
   ("GetFileAttributesExA", None),
   ("GetFileAttributesA", None),
   ("GetFileAttributesExW", None),
@@ -25,7 +27,7 @@ pub static WIN32_TARGETS: [(&'static str, Option<FuncPatcher>); 34] = [
   ("RemoveDirectoryW", None),
   ("DeleteFileW", None),
   ("GetCurrentDirectoryA", None),
-  ("GetCurrentDirectoryW", None),
+  ("GetCurrentDirectoryW", None), // used in at least find_first_file
   ("SetCurrentDirectoryA", None),
   ("SetCurrentDirectoryW", None),
   ("ExitProcess", None),
@@ -52,10 +54,10 @@ pub static WIN32_TARGETS: [(&'static str, Option<FuncPatcher>); 34] = [
   ("GetModuleFileNameW", None),
 ];
 
-pub static WIN8_PLUS_WIN32_TARGETS: [(&'static str, Option<FuncPatcher>); 1] =
+pub static WIN8_PLUS_WIN32_TARGETS: [(&str, Option<FuncPatcher>); 1] =
   [("CopyFile2", None)];
 
-pub static NT_TARGETS: [(&'static str, Option<FuncPatcher>); 11] = [
+pub static NT_TARGETS: [(&str, Option<FuncPatcher>); 11] = [
   ("NtQueryFullAttributesFile", None),
   ("NtQueryAttributesFile", None),
   ("NtQueryDirectoryFile", Some(nt_query_directory_file)),
@@ -65,6 +67,6 @@ pub static NT_TARGETS: [(&'static str, Option<FuncPatcher>); 11] = [
   ("NtQueryInformationByName", None),
   ("NtOpenFile", Some(nt_open_file)),
   ("NtCreateFile", Some(nt_create_file)),
-  ("NtClose", None),
+  ("NtClose", Some(nt_close)),
   ("NtTerminateProcess", None),
 ];

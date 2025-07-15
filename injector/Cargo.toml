@@ -1,23 +1,27 @@
+#:schema ../json_schemas/cargo_nightly.json
+
 [package]
 name = "injector"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
+[features]
+testing-no-embed = []
+
 [dependencies]
 # Internal
-agent = { workspace = true }
+agent = { path = "../agent", artifact = "cdylib" }
 shared-types = { workspace = true }
 
 # External
+clap = { workspace = true, features = ["derive"] }
 frida = { workspace = true }
 interprocess = { workspace = true }
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["time", "signal"] }
 sysinfo = { version = "0.35.2", default-features = false, features = [
   "system",
 ] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-appender = { workspace = true }
-
-[build-dependencies]

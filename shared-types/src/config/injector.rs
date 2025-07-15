@@ -3,44 +3,57 @@ use std::{fs::read_to_string, path::PathBuf};
 use serde::{Deserialize, Serialize};
 use tracing::level_filters::LevelFilter;
 
+use crate::config::VirtualFsConfig;
+
 #[derive(Debug, Deserialize)]
 pub struct InjectorConfig {
   pub virtual_filesystem: VirtualFsConfig,
   #[serde(default)]
   pub debug: DebugConfig,
   pub target: TargetConfig,
+  #[serde(default)]
+  pub exit_once_patched: bool,
 }
 
 impl InjectorConfig {
-  pub fn from_args() -> Self {
-    let config_path = std::env::args().nth(1).unwrap();
-    let config_str = read_to_string(config_path).unwrap();
+  pub fn parse_or_panic(path: impl AsRef<std::path::Path>) -> Self {
+    let config_str = read_to_string(path).unwrap();
     toml::from_str(&config_str).unwrap()
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct TargetConfig {
   pub executable: String,
   pub working_dir: Option<PathBuf>,
   #[serde(default)]
   pub args: Vec<String>,
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VirtualFsConfig {
-  #[serde(alias = "mp", rename(serialize = "mp"))]
-  pub mount_point: PathBuf,
-  #[serde(alias = "vr", rename(serialize = "vr"))]
-  pub virtual_root: PathBuf,
+  #[serde(skip)]
+  pub pid: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DebugConfig {
   #[serde(default = "_true")]
-  pub enable_hook_logging: bool,
+  pub enable_ipc_logging: bool,
   #[serde(with = "filter_serde", default = "_level")]
   pub tracing_level: LevelFilter,
+  #[serde(default)]
+  pub suppress_target_output: bool,
+  #[serde(default)]
+  pub print_hook_logs_to_console: bool,
+}
+
+impl Default for DebugConfig {
+  fn default() -> Self {
+    Self {
+      enable_ipc_logging: false,
+      tracing_level: LevelFilter::INFO,
+      suppress_target_output: false,
+      print_hook_logs_to_console: false,
+    }
+  }
 }
 
 const fn _true() -> bool {
@@ -49,15 +62,6 @@ const fn _true() -> bool {
 
 const fn _level() -> LevelFilter {
   LevelFilter::INFO
-}
-
-impl Default for DebugConfig {
-  fn default() -> Self {
-    Self {
-      enable_hook_logging: Default::default(),
-      tracing_level: LevelFilter::INFO,
-    }
-  }
 }
 
 mod filter_serde {

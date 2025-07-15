@@ -1,23 +1,14 @@
 use std::path::Path;
 
 use shared_types::HookError;
-use win_api::{
-  Wdk::Foundation::OBJECT_ATTRIBUTES,
-  Win32::Foundation::{HANDLE, UNICODE_STRING},
-};
+use win_api::{Wdk::Foundation::OBJECT_ATTRIBUTES, Win32::Foundation::HANDLE};
 
-use crate::{raw_ptr::UnsafeRefCast, windows::os_types::unicode_string::path_to_unicode_string};
+use crate::{raw_ptr::UnsafeRefCast, windows::os_types::unicode_string::OwnedUnicodeString};
 
+#[derive(Debug)]
 pub struct ReroutedObjectAttrs {
-  path_owner: widestring::U16CString,
-  path: *const UNICODE_STRING,
+  pub unicode_path: OwnedUnicodeString,
   pub attrs: OBJECT_ATTRIBUTES,
-}
-
-impl Drop for ReroutedObjectAttrs {
-  fn drop(&mut self) {
-    unsafe { drop(Box::from_raw(self.path.cast_mut())) };
-  }
 }
 
 pub trait RawObjectAttrsExt: UnsafeRefCast<OBJECT_ATTRIBUTES> {
@@ -27,14 +18,13 @@ pub trait RawObjectAttrsExt: UnsafeRefCast<OBJECT_ATTRIBUTES> {
 impl<T: UnsafeRefCast<OBJECT_ATTRIBUTES>> RawObjectAttrsExt for T {
   unsafe fn reroute(self, path: impl AsRef<Path>) -> Result<ReroutedObjectAttrs, HookError> {
     unsafe {
-      let (path_owner, unicode) = path_to_unicode_string(path)?;
+      let unicode_path = OwnedUnicodeString::path_to_unicode_nt_path(path)?;
       let mut reroute = ReroutedObjectAttrs {
-        path_owner,
-        path: Box::into_raw(Box::new(unicode)),
+        unicode_path,
         attrs: self.read(),
       };
 
-      reroute.attrs.ObjectName = reroute.path;
+      reroute.attrs.ObjectName = reroute.unicode_path.unicode_ptr;
       reroute.attrs.RootDirectory = HANDLE(std::ptr::null_mut());
 
       Ok(reroute)

@@ -8,9 +8,6 @@ mod errors;
 pub mod unsafe_types;
 
 pub use errors::*;
-use serde::{Deserialize, Serialize};
-
-use crate::config::VirtualFsConfig;
 
 pub const DEFAULT_HEARTBEAT: Duration = Duration::from_millis(500);
 
@@ -24,6 +21,12 @@ pub enum Message {
   DebugGetModules(String),
   #[strum(to_string = "Info: Opened {0}")]
   DebugFileOpened(String),
+  Trace {
+    file: String,
+    line: u32,
+    function: String,
+    message: String,
+  },
   #[strum(to_string = "Finished patching target process")]
   FinishedPatching,
   ShutdownCountdown(usize),
@@ -39,23 +42,5 @@ impl Message {
 
   pub fn recv(reader: &mut impl std::io::Read) -> Result<Message, DecodeError> {
     decode_from_std_read(reader, bincode::config::standard())
-  }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EntryData {
-  #[serde(rename = "sn")]
-  pub socket_name: Option<String>,
-  #[serde(rename = "fs")]
-  pub fs_config: VirtualFsConfig,
-}
-
-impl EntryData {
-  pub fn encode(self) -> Result<Vec<u8>, HookError> {
-    Ok(serde_json::to_string(&self)?.into())
-  }
-
-  pub fn decode(data: &str) -> Result<Self, HookError> {
-    Ok(serde_json::from_str(data)?)
   }
 }

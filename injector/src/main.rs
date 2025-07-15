@@ -2,119 +2,180 @@ use std::{
   ffi::CString,
   hash::{Hash, Hasher},
   io::{BufRead, BufReader, Cursor, LineWriter, Write},
+  process::exit,
   str::FromStr,
-  sync::{LazyLock, Mutex},
+  sync::LazyLock,
   time::Duration,
 };
 
-use frida::{Frida, Inject, Injector, OutputListener, SpawnOptions};
+use ::tracing::{debug, info, trace};
+use clap::Parser;
+use frida::{Device, Frida, Inject, OutputListener, SpawnOptions};
 use interprocess::local_socket::{
   GenericNamespaced, Listener, ListenerOptions, Name, Stream, ToNsName,
   traits::{ListenerExt, Stream as _},
 };
-use shared_types::{EntryData, Message, config::InjectorConfig};
-use tracing::{debug, info};
-use tracing_subscriber::EnvFilter;
+use shared_types::{
+  Message,
+  config::{
+    hook::{HookConfig, HookLoggingConfig},
+    injector::{InjectorConfig, TargetConfig},
+  },
+};
 
-static HOOK: &'static [u8] = include_bytes!(env!("DYLIB_PATH"));
+use config::Cli;
+use tracing::HOOKED_PROCESS_OUTPUT_TARGET;
+
+mod config;
+mod tracing;
+
+#[cfg(not(feature = "testing-no-embed"))]
+static HOOK: &'static [u8] = include_bytes!(env!("CARGO_CDYLIB_FILE_AGENT"));
+#[cfg(feature = "testing-no-embed")]
+static HOOK: &str = env!("CARGO_CDYLIB_FILE_AGENT");
 
 static FRIDA: LazyLock<Frida> = LazyLock::new(|| unsafe { Frida::obtain() });
 
 fn main() {
-  let config = InjectorConfig::from_args();
-  let target_config = config.target;
+  let cli = Cli::parse();
+  let config = InjectorConfig::from(cli);
 
-  let (non_blocking, _guard) = tracing_appender::non_blocking(std::io::stdout());
-  tracing_subscriber::fmt()
-    .with_writer(non_blocking)
-    .with_env_filter(
-      EnvFilter::builder()
-        .with_default_directive(config.debug.tracing_level.into())
-        .from_env_lossy(),
-    )
-    .init();
+  let target_config = config.target;
+  let exit_once_patched = config.exit_once_patched;
+
+  let _guard = tracing::init_tracing(&config.debug, exit_once_patched);
 
   let device_manager = frida::DeviceManager::obtain(&FRIDA);
   let local_device = device_manager.get_local_device();
 
-  if let Ok(mut device) = local_device {
-    println!("[*] Frida version: {}", frida::Frida::version());
-    println!("[*] Device name: {}", device.get_name());
+  let mut device = local_device.unwrap();
 
-    let mut options = SpawnOptions::default()
-      .stdio(frida::SpawnStdio::Pipe)
-      .argv(target_config.args);
+  trace!("[*] Frida version: {}", frida::Frida::version());
+  trace!("[*] Device name: {}", device.get_name());
 
-    if let Some(working_dir) = target_config.working_dir {
-      options = options.cwd(&CString::from_str(&working_dir.to_string_lossy()).unwrap())
-    }
+  let pid = target_config
+    .pid
+    .unwrap_or_else(|| spawn_target(&target_config, &mut device));
 
-    device.add_output_listener(Output);
-
-    let pid = device.spawn(target_config.executable, &options).unwrap();
-
-    let (runtime, names) = if dbg!(config.debug.enable_hook_logging) {
-      let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
-      let mut hasher = std::hash::DefaultHasher::new();
-      std::process::id().hash(&mut hasher);
-      let name = format!("{}.sock", hasher.finish());
-      let ns_name = name
-        .as_str()
-        .to_ns_name::<GenericNamespaced>()
-        .unwrap()
-        .into_owned();
-      let listener = ListenerOptions::new()
-        .name(ns_name.borrow())
-        .create_sync()
-        .unwrap();
-
-      runtime.spawn_blocking(|| message_listener(listener));
-
-      Some((runtime, (name, ns_name)))
-    } else {
-      None
-    }
-    .unzip();
-    let (name, ns_name) = names.unzip();
-
-    let entry_data = EntryData {
-      socket_name: name,
-      fs_config: config.virtual_filesystem,
-    }
-    .encode()
+  let runtime = tokio::runtime::Builder::new_multi_thread()
+    .enable_all()
+    .build()
     .unwrap();
 
-    let id = Injector::new()
-      .inject_library_blob_sync(pid, HOOK, "injected_function", entry_data)
+  let (name, ns_name) = if config.debug.enable_ipc_logging {
+    let mut hasher = std::hash::DefaultHasher::new();
+    std::process::id().hash(&mut hasher);
+    let name = format!("{}.sock", hasher.finish());
+    let ns_name = name
+      .as_str()
+      .to_ns_name::<GenericNamespaced>()
+      .unwrap()
+      .into_owned();
+    let listener = ListenerOptions::new()
+      .name(ns_name.borrow())
+      .create_sync()
       .unwrap();
 
-    println!("*** Injected, id={id}");
+    runtime.spawn_blocking(move || message_listener(listener, exit_once_patched));
 
+    Some((name, ns_name))
+  } else {
+    None
+  }
+  .unzip();
+
+  let entry_data = HookConfig {
+    logging_config: match name {
+      Some(ipc_name) => HookLoggingConfig::Ipc(ipc_name),
+      None if config.debug.print_hook_logs_to_console => HookLoggingConfig::Stderr,
+      None => HookLoggingConfig::None,
+    },
+    fs_config: config.virtual_filesystem,
+  }
+  .encode()
+  .unwrap();
+
+  #[cfg(not(feature = "testing-no-embed"))]
+  let id = device
+    .inject_library_blob_sync(pid, HOOK, "injected_function", entry_data)
+    .unwrap();
+  #[cfg(feature = "testing-no-embed")]
+  let id = device
+    .inject_library_file_sync(pid, HOOK, "injected_function", entry_data)
+    .unwrap();
+
+  info!("*** Injected, id={id}");
+
+  if target_config.pid.is_none() {
     device.resume(pid).unwrap();
+  }
 
-    if let Some((runtime, ns_name)) = runtime.zip(ns_name) {
-      runtime.block_on(deadline_check(pid, ns_name));
-    }
+  if !exit_once_patched {
+    let deadline_check = async move {
+      if let Some(ns_name) = ns_name {
+        deadline_check(pid, ns_name).await;
+      }
+    };
+    let ctrlc_signal = tokio::signal::ctrl_c();
+    runtime.block_on(async move {
+      tokio::pin!(deadline_check);
+
+      tokio::select! {
+        _ = &mut deadline_check => {
+          return;
+        },
+        _ = ctrlc_signal => {
+          info!(target: "injector", "Got Ctrl-C - Killing hooked process");
+          device.kill(pid).unwrap();
+        }
+      }
+      deadline_check.await;
+    });
+  } else {
+    exit(0)
   }
 }
 
-fn message_listener(listener: Listener) {
+fn spawn_target(target_config: &TargetConfig, device: &mut Device) -> u32 {
+  let mut options = SpawnOptions::default()
+    .stdio(frida::SpawnStdio::Pipe)
+    .argv(&target_config.args);
+
+  if let Some(working_dir) = &target_config.working_dir {
+    options = options.cwd(CString::from_str(&working_dir.to_string_lossy()).unwrap())
+  }
+
+  device.add_output_listener(Output);
+
+  device.spawn(&target_config.executable, &options).unwrap()
+}
+
+// TODO: split this into a public module
+fn message_listener(listener: Listener, exit_once_patched: bool) {
+  dbg!(exit_once_patched);
   for stream in listener.incoming().filter_map(Result::ok) {
     let mut reader = BufReader::new(stream);
 
     let has_remaining = |reader: &mut BufReader<Stream>| reader.fill_buf().map(|b| !b.is_empty());
+    let mut shutdown_started = false;
     while let Ok(message) = Message::recv(&mut reader) {
       match message {
-        Message::ShutdownCountdown(count) => info!(
-          "Terminating in {:.1}s",
-          (SHUTDOWN_INTERVAL * (SHUTDOWN_COUNT - count) as u32).as_secs_f32()
-        ),
+        Message::ShutdownCountdown(count) => {
+          if !shutdown_started {
+            info!("Hooked process is dead. Shutting down IPC socket.");
+            shutdown_started = true;
+          }
+          info!(
+            "Terminating in {:.1}s",
+            (SHUTDOWN_INTERVAL * (SHUTDOWN_COUNT - count) as u32).as_secs_f32()
+          )
+        }
         Message::ShutdownFinal => {
           info!("shutdown");
+          return;
+        }
+        Message::FinishedPatching if exit_once_patched => {
+          println!("exiting early");
           return;
         }
         _ => {
@@ -160,20 +221,28 @@ async fn deadline_check(pid: u32, ns_name: Name<'_>) {
 
 struct Output;
 
+// TODO: implement listener cleanup
 impl OutputListener for Output {
-  fn on_output(pid: u32, fd: i8, data: Vec<u8>) {
-    static BUFFER: LazyLock<Mutex<LineWriter<Cursor<Vec<u8>>>>> =
-      LazyLock::new(|| Mutex::new(LineWriter::new(Default::default())));
+  fn on_output(_pid: u32, _fd: i8, _data: Vec<u8>) {
+    unimplemented!()
+  }
 
-    let mut buf = BUFFER.lock().unwrap();
+  fn on_output_with_context(
+    pid: u32,
+    fd: i8,
+    data: Vec<u8>,
+    buf: &mut LineWriter<Cursor<Vec<u8>>>,
+  ) {
     buf.write_all(&data).unwrap();
 
     let inner = buf.get_mut();
     if inner.position() > 0 {
       let line = String::from_utf8_lossy(inner.get_ref());
-      line
-        .split_terminator('\n')
-        .for_each(|line| info!(target: "hooked_process.stdout", pid, fd, "{line}"));
+      line.split_terminator('\n').for_each(|line| {
+        info!(target: HOOKED_PROCESS_OUTPUT_TARGET, pid, fd);
+        info!(target: HOOKED_PROCESS_OUTPUT_TARGET, "{line}");
+        info!(target: HOOKED_PROCESS_OUTPUT_TARGET, "---");
+      });
       inner.get_mut().clear();
       inner.set_position(0);
     }

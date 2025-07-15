@@ -1,0 +1,17 @@
+#:schema ../json_schemas/cargo_nightly.json
+
+[package]
+name = "integration"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+injector = { path = "../injector", features = ["testing-no-embed"], artifact = "bin" }
+
+[target.'cfg(windows)'.dev-dependencies]
+widestring = { workspace = true }
+win-api = { workspace = true }
+windows-strings = { workspace = true }

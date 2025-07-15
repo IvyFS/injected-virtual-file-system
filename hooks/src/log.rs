@@ -5,35 +5,44 @@ use std::{
 };
 
 use crossbeam_queue::SegQueue;
-use interprocess::local_socket::Stream;
-use shared_types::{EncodeError, Message};
+use interprocess::local_socket::{GenericNamespaced, Stream, ToNsName, traits::Stream as _};
+use shared_types::{EncodeError, Message, config::hook::HookLoggingConfig};
 
 pub(crate) use macros::*;
 
-static MSG_QUEUE: LazyLock<SegQueue<Message>> = LazyLock::new(|| Default::default());
+static MSG_QUEUE: LazyLock<SegQueue<Message>> = LazyLock::new(Default::default);
 static LOGGING_ENABLED: AtomicBool = AtomicBool::new(true);
+static LOG_STDERR: AtomicBool = AtomicBool::new(false);
 
-pub fn init_logger(stream: Option<Stream>) {
-  if let Some(mut stream) = stream {
-    std::thread::spawn(move || {
-      loop {
-        if let Some(message) = MSG_QUEUE.pop() {
-          if let Err(err) = message.send(&mut stream) {
+pub fn init_logging(config: HookLoggingConfig) {
+  match config {
+    HookLoggingConfig::Ipc(socket_name) => {
+      let ns_name = socket_name.to_ns_name::<GenericNamespaced>().unwrap();
+      let mut stream = Stream::connect(ns_name).unwrap();
+      std::thread::spawn(move || {
+        loop {
+          if let Some(message) = MSG_QUEUE.pop()
+            && let Err(err) = message.send(&mut stream)
+          {
             eprintln!("{err:?}");
             if matches!(err, EncodeError::Io { .. } | EncodeError::UnexpectedEnd) {
               return;
             }
           }
         }
-      }
-    });
-  } else {
-    LOGGING_ENABLED.store(false, std::sync::atomic::Ordering::Relaxed);
+      });
+    }
+    HookLoggingConfig::Stderr => {
+      LOG_STDERR.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    HookLoggingConfig::None => LOGGING_ENABLED.store(false, std::sync::atomic::Ordering::Relaxed),
   }
 }
 
 pub fn log(msg: Message) {
-  if LOGGING_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+  if LOG_STDERR.load(std::sync::atomic::Ordering::Relaxed) {
+    eprintln!("{msg}")
+  } else if LOGGING_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
     MSG_QUEUE.push(msg);
   } else if let Message::Error(err) = msg {
     panic!("{err}")
@@ -77,6 +86,7 @@ mod macros {
   macro_rules! trace_expr {
     ($default:expr, $($tt:tt)*) => {
       {
+        #[allow(clippy::redundant_closure_call)]
         let res: Result::<_, shared_types::HookError> = (|| {
           $($tt)*
         })();

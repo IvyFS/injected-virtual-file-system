@@ -1,9 +1,11 @@
 [virtual_filesystem]
 mount_point = "D:\\Games\\Starsector\\mods"
-virtual_root = "C:\\Users\\wanty\\Documents\\usvfs-rust\\demo\\target_folder"
+virtual_root = "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\target_folder"
 
 [debug]
 logging = true
+suppress_target_output = true
+tracing_level = "debug"
 
 [target]
 executable = "D:\\Games\\Starsector\\jre\\bin\\java.exe"

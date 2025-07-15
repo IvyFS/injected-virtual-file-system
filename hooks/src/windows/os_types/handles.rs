@@ -1,5 +1,4 @@
 use std::{
-  borrow::Borrow,
   ffi::{OsString, c_void},
   hash::Hash,
   ops::Deref,
@@ -10,14 +9,13 @@ use std::{
 
 use dashmap::DashMap;
 use ref_cast::RefCast;
-use shared_types::HookError;
+use shared_types::{ErrorContext, HookError};
 use win_api::{
   Wdk::Foundation::OBJECT_ATTRIBUTES,
   Win32::{
     Foundation::HANDLE,
     Storage::FileSystem::{
       FILE_ATTRIBUTE_OFFLINE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAGS_AND_ATTRIBUTES,
-      FILE_SHARE_DELETE, FILE_SHARE_MODE, FILE_SHARE_READ, FILE_SHARE_WRITE,
       GETFINALPATHNAMEBYHANDLE_FLAGS, GetFinalPathNameByHandleW,
     },
   },
@@ -25,15 +23,15 @@ use win_api::{
 
 use crate::{
   extension_traits::DashExt,
-  log::log_info,
+  log::logfmt_dbg,
   raw_ptr::UnsafeRefCast,
   virtual_paths::{MOUNT_POINT, VIRTUAL_ROOT, windows::VirtualPath},
   windows::os_types::paths::sanitise_path,
 };
 
+#[allow(dead_code)]
 pub const NULL_HANDLE: HANDLE = HANDLE(std::ptr::null_mut());
 
-// aka u32::MAX
 pub const DO_NOT_HOOK: FILE_FLAGS_AND_ATTRIBUTES = FILE_ATTRIBUTE_OFFLINE;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, RefCast)]
@@ -49,6 +47,12 @@ impl From<HANDLE> for Handle {
 impl From<*mut c_void> for Handle {
   fn from(value: *mut c_void) -> Self {
     Self(HANDLE(value))
+  }
+}
+
+impl From<*mut HANDLE> for Handle {
+  fn from(value: *mut HANDLE) -> Self {
+    Self(unsafe { value.read() })
   }
 }
 
@@ -83,39 +87,16 @@ impl Hash for Handle {
 unsafe impl Send for Handle {}
 unsafe impl Sync for Handle {}
 
-pub static HANDLE_MAP: LazyLock<HandleMap> = LazyLock::new(|| Default::default());
-
-pub fn init_handles() {
-  let virtual_root = VIRTUAL_ROOT.read().unwrap().clone();
-  let mut root_ancestors: Vec<_> = virtual_root.ancestors().collect();
-  root_ancestors.reverse();
-  for path in &root_ancestors {
-    let raw_handle = std_open_dir_handle_unhooked(path).unwrap();
-    HANDLE_MAP.insert(raw_handle, path);
-  }
-
-  let mount_point = MOUNT_POINT.read().unwrap().clone();
-  let mut mount_ancestors: Vec<_> = mount_point
-    .ancestors()
-    .filter(|p| !root_ancestors.contains(p))
-    .collect();
-  mount_ancestors.reverse();
-  for path in mount_ancestors {
-    let raw_handle = std_open_dir_handle_unhooked(path).unwrap();
-    HANDLE_MAP.insert(raw_handle, path);
-  }
-}
+pub static HANDLE_MAP: LazyLock<HandleMap> = LazyLock::new(Default::default);
 
 pub fn std_open_dir_handle_unhooked(path: impl AsRef<Path>) -> Result<Handle, HookError> {
-  const DEFAULT_SHARE_MODE: u32 = FILE_SHARE_READ.0 | FILE_SHARE_WRITE.0 | FILE_SHARE_DELETE.0;
-
   let handle = std::fs::File::options()
     .read(true)
     .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
     // .share_mode(DEFAULT_SHARE_MODE | DO_NOT_HOOK.0)
     .attributes(DO_NOT_HOOK.0)
     .open(path.as_ref())
-    .unwrap();
+    .with_context(|| format!("path = {:?}", path.as_ref()))?;
   Ok(handle.into_raw_handle().into())
 }
 
@@ -123,6 +104,7 @@ pub fn std_open_dir_handle_unhooked(path: impl AsRef<Path>) -> Result<Handle, Ho
 pub struct HandleInfo {
   pub path: PathBuf,
   pub handle: Handle,
+  pub rerouted: bool,
 }
 
 #[derive(Debug, Default)]
@@ -132,17 +114,21 @@ pub struct HandleMap {
 }
 
 impl HandleMap {
-  pub fn insert(&self, handle: impl Into<Handle>, path: impl AsRef<Path>) -> bool {
+  pub fn insert(&self, handle: impl Into<Handle>, path: impl AsRef<Path>, rerouted: bool) -> bool {
     let handle = handle.into();
-    let path = sanitise_path(&path);
+    let (path, glob) = sanitise_path(&path);
+    let path = if glob {
+      path.join("*")
+    } else {
+      path.to_owned()
+    };
     let handle_info = Arc::new(HandleInfo {
-      path: path.to_owned(),
+      path: path.clone(),
       handle,
+      rerouted,
     });
-    let inserted = self.ptr_keyed.try_insert(handle, Arc::clone(&handle_info))
-      && self.path_keyed.try_insert(path.to_owned(), handle_info);
-
-    inserted
+    self.ptr_keyed.try_insert(handle, Arc::clone(&handle_info))
+      && self.path_keyed.try_insert(path, handle_info)
   }
 
   pub fn get_by_handle(
@@ -152,27 +138,40 @@ impl HandleMap {
     self.ptr_keyed.get(&handle.into())
   }
 
-  pub fn get_by_path<Q: Hash + Eq + ?Sized>(
-    &self,
-    path: &Q,
-  ) -> Option<dashmap::mapref::one::Ref<'_, Handle, Arc<HandleInfo>>>
-  where
-    PathBuf: Borrow<Q>,
-  {
-    self
-      .path_keyed
-      .get(path)
-      .and_then(|handle_ref| self.ptr_keyed.get(&handle_ref.handle))
+  pub fn remove_by_handle(&self, handle: impl Into<Handle>) -> Option<(Handle, Arc<HandleInfo>)> {
+    let key = handle.into();
+    let res = self.ptr_keyed.remove(&key);
+    if let Some((_, info)) = res.as_ref() {
+      self.path_keyed.remove(&info.path);
+    }
+
+    res
   }
 
-  pub unsafe fn insert_by_object_attributes(
+  pub fn overwrite(
+    &self,
     handle: impl Into<Handle>,
-    attrs: impl ObjectAttributesExt,
-  ) -> Result<bool, HookError> {
-    unsafe {
-      let path = attrs.path()?;
-      Ok(HANDLE_MAP.insert(handle, path))
-    }
+    path: impl AsRef<Path>,
+    rerouted: bool,
+  ) -> bool {
+    let handle = handle.into();
+    let (path, glob) = sanitise_path(&path);
+    let path = if glob {
+      path.join("*")
+    } else {
+      path.to_owned()
+    };
+    let handle_info = Arc::new(HandleInfo {
+      path: path.clone(),
+      handle,
+      rerouted,
+    });
+
+    let res = self
+      .ptr_keyed
+      .insert(handle, Arc::clone(&handle_info))
+      .is_some();
+    self.path_keyed.insert(path, handle_info).is_some() && res
   }
 }
 
@@ -186,15 +185,19 @@ impl ObjectAttributesExt for OBJECT_ATTRIBUTES {
       let stem_raw = OsString::from_wide(self.ObjectName.ref_cast()?.Buffer.as_wide());
       let stem: &Path = stem_raw.as_ref();
 
+      // TODO?: canonicalize but preserve nt prefix?
+
+      let mut path = stem.to_owned();
       if !self.RootDirectory.is_invalid() {
         let handle = Handle::ref_cast(&self.RootDirectory);
         if let Some(info) = HANDLE_MAP.get_by_handle(*handle) {
-          return Ok(info.path.join(stem));
-        } else if let Ok(path) = path_from_handle(handle) {
-          return Ok(Path::new(&path).to_owned());
+          path = info.path.join(path);
+        } else if let Ok(handle_path) = path_from_handle(handle) {
+          path = Path::new(&handle_path).join(path);
         }
       }
-      Ok(stem.to_owned())
+
+      Ok(path)
     }
   }
 }
@@ -210,7 +213,7 @@ pub unsafe fn path_from_handle(handle: &HANDLE) -> Result<String, HookError> {
     const LEN: usize = 1024;
     let mut buffer = [0; LEN];
     let len = GetFinalPathNameByHandleW(
-      handle.clone(),
+      *handle,
       &mut buffer,
       GETFINALPATHNAMEBYHANDLE_FLAGS::default(),
     );
@@ -223,14 +226,25 @@ pub unsafe fn path_from_handle(handle: &HANDLE) -> Result<String, HookError> {
 }
 
 pub fn get_virtual_path(path: impl AsRef<Path>) -> Result<Option<VirtualPath>, HookError> {
-  let path = sanitise_path(&path);
-  let canon = dunce::simplified(path);
+  let (trimmed, glob) = sanitise_path(&path);
+  let mut canon = dunce::simplified(trimmed).to_path_buf();
+  if glob {
+    canon.push("*");
+  }
 
   match canon.strip_prefix(MOUNT_POINT.read()?.as_path()) {
-    Ok(stem) => Ok(Some(VirtualPath {
-      path: VIRTUAL_ROOT.read()?.join(stem),
-      original: canon.to_path_buf(),
-    })),
+    Ok(stem) => {
+      let virtual_root = VIRTUAL_ROOT.read()?;
+      let rerouted_path = if !stem.as_os_str().is_empty() {
+        virtual_root.join(stem)
+      } else {
+        virtual_root.to_path_buf()
+      };
+      Ok(Some(VirtualPath {
+        path: rerouted_path,
+        original: canon.to_path_buf(),
+      }))
+    }
     _ => Ok(None),
   }
 }

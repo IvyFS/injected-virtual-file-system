@@ -2,6 +2,7 @@ use core::any::type_name;
 
 use shared_types::HookError;
 
+#[allow(dead_code)]
 pub trait UnsafeRefCast<T> {
   unsafe fn read(self) -> T;
 

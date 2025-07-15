@@ -6,7 +6,7 @@ authors.workspace = true
 
 [dependencies]
 # Internal
-macros = { workspace = true }
+proc-macros = { workspace = true }
 shared-types = { workspace = true }
 
 # External
@@ -19,7 +19,7 @@ crossbeam-queue = "0.3.12"
 [target.'cfg(windows)'.dependencies]
 dunce = "1.0.5"
 ref-cast = { workspace = true }
-widestring = "1.2.0"
+widestring = { workspace = true }
 win-api = { workspace = true }
 win-types = { workspace = true }
 windows-strings = { workspace = true }

@@ -1,7 +1,6 @@
-use std::ffi::c_void;
+use std::{ffi::c_void, path::PathBuf};
 
-use macros::{crabtime, generate_patch};
-use shared_types::{HookError, Message};
+use proc_macros::patch_fn;
 use win_api::Win32::Foundation::STATUS_NO_SUCH_FILE;
 pub use win_api::{
   Wdk::{
@@ -16,12 +15,15 @@ pub use win_api::{
 };
 
 use crate::{
-  log::*,
-  windows::os_types::handles::{DO_NOT_HOOK, HandleMap, ObjectAttributesExt},
+  log::{logfmt_dbg, trace_expr},
+  windows::os_types::{
+    handles::{DO_NOT_HOOK, HANDLE_MAP, ObjectAttributesExt, get_virtual_path},
+    object_attributes::RawObjectAttrsExt,
+  },
 };
 
-generate_patch!(
-  "NtCreateFile",
+patch_fn!(
+  NtCreateFile,
   (
     *mut HANDLE,
     FILE_ACCESS_RIGHTS,
@@ -38,7 +40,7 @@ generate_patch!(
   detour_nt_create_file
 );
 
-unsafe extern "system" fn detour_nt_create_file(
+pub(crate) unsafe extern "system" fn detour_nt_create_file(
   handle: *mut HANDLE,
   _1: FILE_ACCESS_RIGHTS,
   attrs: *const OBJECT_ATTRIBUTES,
@@ -51,17 +53,25 @@ unsafe extern "system" fn detour_nt_create_file(
   _9: *const c_void,
   _10: u32,
 ) -> NTSTATUS {
-  let res = trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
-    if flags_and_attributes.contains(DO_NOT_HOOK) {
-      flags_and_attributes.0 ^= DO_NOT_HOOK.0;
-      logfmt_dbg!("Got DO_NOT_HOOK for path {:?}", attrs.path());
-    }
-
+  trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
     let original_fn = original();
-    let res = original_fn(
+
+    let path: PathBuf = dbg!(attrs.path())?;
+    let (attrs_ptr, reroute_guard) = if flags_and_attributes.contains(DO_NOT_HOOK) {
+      flags_and_attributes.0 ^= DO_NOT_HOOK.0;
+      logfmt_dbg!("Got DO_NOT_HOOK for path {:?}", attrs);
+      (attrs, None)
+    } else if let Some(virtual_path) = get_virtual_path(&path)? {
+      let attrs = attrs.reroute(virtual_path.path)?;
+      (&raw const attrs.attrs, Some(attrs))
+    } else {
+      (attrs, None)
+    };
+
+    let status = original_fn(
       handle,
       _1,
-      attrs,
+      attrs_ptr,
       _3,
       _4,
       flags_and_attributes,
@@ -72,13 +82,23 @@ unsafe extern "system" fn detour_nt_create_file(
       _10,
     );
 
-    if res.is_ok() {
-      log_lossy(Message::DebugInfo(format!("nt_create {:?}", attrs.path())));
-      HandleMap::insert_by_object_attributes(*handle, attrs)?;
+    if status.is_ok() {
+      if let Some(reroute) = reroute_guard {
+        logfmt_dbg!(
+          "rerouting from {:?} to {:?}",
+          path,
+          reroute.unicode_path.string_buffer
+        );
+        HANDLE_MAP.insert(
+          handle,
+          reroute.unicode_path.string_buffer.to_os_string(),
+          true,
+        )
+      } else {
+        HANDLE_MAP.insert(handle, path, false)
+      };
     }
 
-    Ok(res)
-  });
-
-  res
+    Ok(status)
+  })
 }
