@@ -26,7 +26,7 @@ use crate::{
   log::logfmt_dbg,
   raw_ptr::UnsafeRefCast,
   virtual_paths::{MOUNT_POINT, VIRTUAL_ROOT, windows::VirtualPath},
-  windows::os_types::paths::sanitise_path,
+  windows::os_types::paths::strip_nt_prefix,
 };
 
 #[allow(dead_code)]
@@ -41,6 +41,12 @@ pub struct Handle(HANDLE);
 impl From<HANDLE> for Handle {
   fn from(value: HANDLE) -> Self {
     Self(value)
+  }
+}
+
+impl From<Handle> for HANDLE {
+  fn from(value: Handle) -> Self {
+    value.0
   }
 }
 
@@ -116,12 +122,7 @@ pub struct HandleMap {
 impl HandleMap {
   pub fn insert(&self, handle: impl Into<Handle>, path: impl AsRef<Path>, rerouted: bool) -> bool {
     let handle = handle.into();
-    let (path, glob) = sanitise_path(&path);
-    let path = if glob {
-      path.join("*")
-    } else {
-      path.to_owned()
-    };
+    let path = strip_nt_prefix(&path).to_owned();
     let handle_info = Arc::new(HandleInfo {
       path: path.clone(),
       handle,
@@ -147,32 +148,6 @@ impl HandleMap {
 
     res
   }
-
-  pub fn overwrite(
-    &self,
-    handle: impl Into<Handle>,
-    path: impl AsRef<Path>,
-    rerouted: bool,
-  ) -> bool {
-    let handle = handle.into();
-    let (path, glob) = sanitise_path(&path);
-    let path = if glob {
-      path.join("*")
-    } else {
-      path.to_owned()
-    };
-    let handle_info = Arc::new(HandleInfo {
-      path: path.clone(),
-      handle,
-      rerouted,
-    });
-
-    let res = self
-      .ptr_keyed
-      .insert(handle, Arc::clone(&handle_info))
-      .is_some();
-    self.path_keyed.insert(path, handle_info).is_some() && res
-  }
 }
 
 pub trait ObjectAttributesExt {
@@ -182,7 +157,9 @@ pub trait ObjectAttributesExt {
 impl ObjectAttributesExt for OBJECT_ATTRIBUTES {
   unsafe fn path(&self) -> Result<PathBuf, HookError> {
     unsafe {
-      let stem_raw = OsString::from_wide(self.ObjectName.ref_cast()?.Buffer.as_wide());
+      let unicode_string = self.ObjectName.ref_cast()?;
+      let stem_raw =
+        OsString::from_wide(&unicode_string.Buffer.as_wide()[..(unicode_string.Length / 2) as usize]);
       let stem: &Path = stem_raw.as_ref();
 
       // TODO?: canonicalize but preserve nt prefix?
@@ -226,11 +203,8 @@ pub unsafe fn path_from_handle(handle: &HANDLE) -> Result<String, HookError> {
 }
 
 pub fn get_virtual_path(path: impl AsRef<Path>) -> Result<Option<VirtualPath>, HookError> {
-  let (trimmed, glob) = sanitise_path(&path);
-  let mut canon = dunce::simplified(trimmed).to_path_buf();
-  if glob {
-    canon.push("*");
-  }
+  let trimmed = strip_nt_prefix(&path);
+  let canon = dunce::simplified(trimmed).to_path_buf();
 
   match canon.strip_prefix(MOUNT_POINT.read()?.as_path()) {
     Ok(stem) => {

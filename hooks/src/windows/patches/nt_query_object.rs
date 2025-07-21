@@ -13,7 +13,7 @@ patch_fn!(
     u32,
     *mut u32
   ) -> NTSTATUS,
-  detour_nt_query_object
+  // detour_nt_query_object
 );
 
 unsafe extern "system" fn detour_nt_query_object(
@@ -24,9 +24,7 @@ unsafe extern "system" fn detour_nt_query_object(
   return_length: *mut u32,
 ) -> NTSTATUS {
   unsafe {
-    let original = nt_query_object::original();
-
-    let res = original(
+    let res = original_nt_query_object(
       handle,
       object_information_class,
       object_information,

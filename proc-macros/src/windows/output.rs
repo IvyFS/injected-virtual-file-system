@@ -37,7 +37,7 @@ pub(crate) struct Mod {
   // _: common imports,
   default_detour: Option<DefaultDetour>,
   target_signature: TargetSignature,
-  original_fn_ptr_cell: OriginalFnPtrCell,
+  original_fn_ptr_cell: OriginalFn,
   patcher: Patcher,
 }
 
@@ -46,7 +46,7 @@ impl Mod {
     name: Ident,
     default_detour: Option<DefaultDetour>,
     target_signature: TargetSignature,
-    original_fn_ptr_cell: OriginalFnPtrCell,
+    original_fn_ptr_cell: OriginalFn,
     patcher: Patcher,
   ) -> Self {
     Self {
@@ -97,6 +97,7 @@ pub(crate) struct DefaultDetour {
   args: TokenStream,
   returns: Option<TokenStream>,
   bindings: TokenStream,
+  original_fn_ident: Ident,
 }
 
 impl DefaultDetour {
@@ -105,12 +106,14 @@ impl DefaultDetour {
     args: CommaDelimitedVec<FnImplArg>,
     returns: Option<Typ>,
     bindings: CommaDelimitedVec<Ident>,
+    original_fn_ident: Ident,
   ) -> Self {
     Self {
       fn_name,
       args: args.to_token_stream(),
       returns: map_return_fragment(returns),
       bindings: bindings.to_token_stream(),
+      original_fn_ident,
     }
   }
 }
@@ -129,6 +132,7 @@ impl ToTokens for DefaultDetour {
       args,
       returns,
       bindings,
+      original_fn_ident,
     } = self;
     let debug_message = fn_name.to_string();
 
@@ -136,10 +140,8 @@ impl ToTokens for DefaultDetour {
       unsafe extern "system" fn #fn_name(#args) #returns {
         crate::log::log(shared_types::Message::DebugDefaultIntercept(#debug_message.to_owned()));
 
-        let original = original();
-
         unsafe {
-          original(#bindings)
+          #original_fn_ident(#bindings)
         }
       }
     };
@@ -180,36 +182,56 @@ impl ToTokens for TargetSignature {
   }
 }
 
-pub(crate) struct OriginalFnPtrCell {
-  name: Ident,
+pub(crate) struct OriginalFn {
+  cell_name: Ident,
   target_sig_name: Ident,
+  original_fn_name: Ident,
+  original_fn_args: TokenStream,
+  original_fn_returns: Option<TokenStream>,
+  original_fn_bindings: TokenStream,
   detour_name: Ident,
 }
 
-impl OriginalFnPtrCell {
-  pub(crate) fn new(name: Ident, target_sig_name: Ident, detour_name: Ident) -> Self {
+impl OriginalFn {
+  pub(crate) fn new(
+    cell_name: Ident,
+    target_sig_name: Ident,
+    original_fn_name: Ident,
+    original_fn_args: CommaDelimitedVec<FnImplArg>,
+    original_fn_returns: Option<Typ>,
+    original_fn_bindings: CommaDelimitedVec<Ident>,
+    detour_name: Ident,
+  ) -> Self {
     Self {
-      name,
+      cell_name,
       target_sig_name,
+      original_fn_name,
+      original_fn_args: original_fn_args.to_token_stream(),
+      original_fn_returns: map_return_fragment(original_fn_returns),
+      original_fn_bindings: original_fn_bindings.to_token_stream(),
       detour_name,
     }
   }
 }
 
-impl ToTokens for OriginalFnPtrCell {
+impl ToTokens for OriginalFn {
   fn to_tokens(&self, tokens: &mut TokenStream) {
     let Self {
-      name,
+      cell_name,
       target_sig_name,
+      original_fn_name,
+      original_fn_args,
+      original_fn_returns,
+      original_fn_bindings,
       detour_name,
     } = self;
 
     let output = quote! {
-      pub static #name: shared_types::unsafe_types::UnsafeSyncCell<#target_sig_name> =
+      pub static #cell_name: shared_types::unsafe_types::UnsafeSyncCell<#target_sig_name> =
         shared_types::unsafe_types::UnsafeSyncCell::new(#detour_name);
 
-      pub unsafe fn original<'a>() -> &'a #target_sig_name {
-        &*#name.get()
+      pub unsafe fn #original_fn_name(#original_fn_args) #original_fn_returns {
+        (*#cell_name.get())(#original_fn_bindings)
       }
     };
 

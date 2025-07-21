@@ -2,15 +2,12 @@
 mount_point = "D:\\Games\\Starsector\\mods"
 virtual_root = "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\target_folder"
 
-[debug]
-logging = true
-suppress_target_output = true
-tracing_level = "debug"
-
 [target]
 executable = "D:\\Games\\Starsector\\jre\\bin\\java.exe"
 working_dir = "D:\\Games\\Starsector\\starsector-core"
 args = [
+  "-Xdebug",
+  "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005",
   "-noverify",
   "-XX:+UnlockDiagnosticVMOptions",
   "-XX:+UnlockExperimentalVMOptions",

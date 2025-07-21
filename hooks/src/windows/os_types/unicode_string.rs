@@ -1,10 +1,19 @@
-use std::{ffi::OsStr, fmt::Debug, ops::Deref, path::Path};
+use std::{
+  ffi::{OsStr, OsString},
+  fmt::Debug,
+  ops::Deref,
+  os::windows::ffi::OsStringExt,
+  path::Path,
+};
 
 use shared_types::HookError;
+use widestring::U16CString;
 use win_api::{
   Wdk::Storage::FileSystem::RtlInitUnicodeStringEx, Win32::Foundation::UNICODE_STRING,
 };
 use win_types::PCWSTR;
+
+use crate::windows::os_types::paths::maybe_verbatim;
 
 pub struct OwnedUnicodeString {
   pub string_buffer: widestring::U16CString,
@@ -28,6 +37,29 @@ impl OwnedUnicodeString {
     Self::new(path.as_ref(), Some("\\??\\"), nil_fix())
   }
 
+  pub unsafe fn path_to_unicode(path: impl AsRef<Path>) -> Result<Self, HookError> {
+    let prefixed = [
+      widestring::u16str!("\\??\\").as_slice(),
+      maybe_verbatim(path.as_ref())?.as_slice(),
+    ]
+    .concat();
+    let string_buffer = unsafe { widestring::U16CString::from_ptr_str(prefixed.as_ptr()) };
+
+    let mut unicode_string = UNICODE_STRING::default();
+    let pcwstr = PCWSTR::from_raw(string_buffer.as_ptr());
+    let res = unsafe { RtlInitUnicodeStringEx(&mut unicode_string, pcwstr) };
+    if res.is_err() {
+      Err(HookError::UnicodeInit(OsString::from_wide(unsafe {
+        pcwstr.as_wide()
+      })))
+    } else {
+      Ok(OwnedUnicodeString {
+        string_buffer,
+        unicode_ptr: Box::into_raw(Box::new(unicode_string)),
+      })
+    }
+  }
+
   pub fn transact<T>(&self, func: impl FnOnce(*const UNICODE_STRING) -> T) -> T {
     func(self.unicode_ptr)
   }
@@ -39,21 +71,70 @@ impl OwnedUnicodeString {
 
 impl Debug for OwnedUnicodeString {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let unicode_buffer = unsafe {
-      self
-        .unicode_ptr
-        .as_ref()
-        .map(|u| u.Buffer.display().to_string())
-    };
-    f.debug_struct("ManagedUnicodeString")
-      .field("_str_owner", &self.string_buffer)
-      .field("str_ptr", &unicode_buffer)
+    f.debug_struct("OwnedUnicodeString")
+      .field("string_buffer", &self.string_buffer)
+      .field("unicode_string len", &unsafe { *self.unicode_ptr }.Length)
       .finish()
   }
 }
 
 pub const fn nil_fix() -> Option<&'static str> {
   None
+}
+
+impl TryFrom<PCWSTR> for OwnedUnicodeString {
+  type Error = HookError;
+
+  fn try_from(pcwstr: PCWSTR) -> Result<OwnedUnicodeString, HookError> {
+    let mut unicode = UNICODE_STRING::default();
+    let res = unsafe { RtlInitUnicodeStringEx(&mut unicode, pcwstr) };
+
+    if res.is_err() {
+      Err(HookError::UnicodeInit(OsString::from_wide(unsafe {
+        pcwstr.as_wide()
+      })))
+    } else {
+      Ok(OwnedUnicodeString {
+        string_buffer: Default::default(),
+        unicode_ptr: Box::into_raw(Box::new(unicode)),
+      })
+    }
+  }
+}
+
+impl TryFrom<&Path> for OwnedUnicodeString {
+  type Error = HookError;
+
+  fn try_from(value: &Path) -> Result<Self, Self::Error> {
+    unsafe { OwnedUnicodeString::path_to_unicode_nt_path(value) }
+  }
+}
+
+impl TryFrom<&OsStr> for OwnedUnicodeString {
+  type Error = HookError;
+
+  fn try_from(value: &OsStr) -> Result<Self, Self::Error> {
+    OwnedUnicodeString::new(value, nil_fix(), nil_fix())
+  }
+}
+
+impl TryFrom<U16CString> for OwnedUnicodeString {
+  type Error = HookError;
+
+  fn try_from(wide_str: U16CString) -> Result<Self, Self::Error> {
+    let mut unicode = UNICODE_STRING::default();
+    let pcwstr = PCWSTR::from_raw(wide_str.as_ptr());
+    let res = unsafe { RtlInitUnicodeStringEx(&mut unicode, pcwstr) };
+
+    if res.is_ok() {
+      Ok(OwnedUnicodeString {
+        string_buffer: wide_str,
+        unicode_ptr: Box::into_raw(Box::new(unicode)),
+      })
+    } else {
+      Err(HookError::UnicodeInit(wide_str.to_os_string()))
+    }
+  }
 }
 
 pub struct UnicodeStringGuard<'a>(&'a OwnedUnicodeString);

@@ -54,9 +54,7 @@ pub(crate) unsafe extern "system" fn detour_nt_create_file(
   _10: u32,
 ) -> NTSTATUS {
   trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
-    let original_fn = original();
-
-    let path: PathBuf = dbg!(attrs.path())?;
+    let path: PathBuf = attrs.path()?;
     let (attrs_ptr, reroute_guard) = if flags_and_attributes.contains(DO_NOT_HOOK) {
       flags_and_attributes.0 ^= DO_NOT_HOOK.0;
       logfmt_dbg!("Got DO_NOT_HOOK for path {:?}", attrs);
@@ -68,7 +66,7 @@ pub(crate) unsafe extern "system" fn detour_nt_create_file(
       (attrs, None)
     };
 
-    let status = original_fn(
+    let status = original_nt_create_file(
       handle,
       _1,
       attrs_ptr,

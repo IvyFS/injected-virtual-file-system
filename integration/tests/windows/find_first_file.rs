@@ -1,4 +1,4 @@
-use std::ffi::OsStr;
+use std::{ffi::OsStr, path::Path};
 
 use win_api::Win32::{
   Foundation::ERROR_NO_MORE_FILES,
@@ -11,13 +11,11 @@ use windows_strings::PCWSTR;
 
 use crate::common::{inject_self, workspace_root};
 
-fn win32_find_files(filename: impl AsRef<OsStr>) -> Vec<widestring::U16CString> {
+pub(crate) fn win32_find_files(filename: impl AsRef<OsStr>) -> Vec<widestring::U16CString> {
   let filename = widestring::U16CString::from_os_str_truncate(filename);
   let lpfilename = PCWSTR::from_raw(filename.as_ptr());
   let mut find_file_data = WIN32_FIND_DATAW::default();
   let handle = unsafe {
-    _ = dbg!(lpfilename.to_string());
-    dbg!(lpfilename.len());
     FindFirstFileExW(
       lpfilename,
       FindExInfoStandard,
@@ -83,15 +81,16 @@ fn absolute_redirect() {
 
 #[test]
 fn relative_redirect() {
-  std::env::set_current_dir(workspace_root().join("integration/tests")).unwrap();
+  let common_dir = Path::new("D:/Games/Starsector");
+  std::env::set_current_dir(common_dir.join("starsector-core")).unwrap();
 
   let workspace_root = workspace_root();
-  let virtual_root = workspace_root.join("integration/target_folder");
-  let mount_point = workspace_root.join("integration/examples");
+  let virtual_root = workspace_root.join("integration\\target_folder");
+  let mount_point = workspace_root.join(common_dir.join("mods"));
 
   inject_self(&virtual_root, &mount_point);
 
-  let found_files = win32_find_files("../examples/*");
+  let found_files = win32_find_files("../mods/*");
 
   for expected in vec![
     widestring::u16cstr!("."),
@@ -108,21 +107,25 @@ fn relative_redirect() {
 }
 
 #[test]
-fn negative_test() {
+fn no_redirect() {
   let workspace_root = workspace_root();
-  let mount_point = workspace_root.join("integration/examples");
+  let virtual_root = workspace_root.join("integration\\target_folder");
+  let mount_point = workspace_root.join("integration\\examples");
 
-  let found_files = win32_find_files(mount_point.join("*"));
+  inject_self(&virtual_root, &mount_point);
+
+  let found_files = win32_find_files(virtual_root.join("*"));
 
   for expected in vec![
     widestring::u16cstr!("."),
     widestring::u16cstr!(".."),
-    widestring::u16cstr!("dummy.rs"),
+    widestring::u16cstr!("virtual_mod"),
+    widestring::u16cstr!("enabled_mods.json"),
   ] {
     assert!(
       found_files.contains(&expected.to_ucstring()),
       "expected file {expected:?} not in found {found_files:?}"
     )
   }
-  assert_eq!(found_files.len(), 3)
+  assert_eq!(found_files.len(), 4)
 }

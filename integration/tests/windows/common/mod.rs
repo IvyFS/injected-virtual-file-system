@@ -1,9 +1,6 @@
 use std::{ffi::OsStr, path::Path, process::Command};
 
-use win_api::Win32::{
-  Foundation::HANDLE,
-  Storage::FileSystem::{GETFINALPATHNAMEBYHANDLE_FLAGS, GetFinalPathNameByHandleW},
-};
+use win_api::Win32::{Foundation::HANDLE, Storage::FileSystem::GetFinalPathNameByHandleW};
 
 pub const INJECTOR: &str = env!("CARGO_BIN_FILE_INJECTOR");
 pub const WORKSPACE_ROOT: &str = env!("CARGO_WORKSPACE_DIR");

@@ -43,6 +43,8 @@ pub struct DebugConfig {
   pub suppress_target_output: bool,
   #[serde(default)]
   pub print_hook_logs_to_console: bool,
+  #[serde(default = "_true")]
+  pub pipe_target_output: bool,
 }
 
 impl Default for DebugConfig {
@@ -52,6 +54,7 @@ impl Default for DebugConfig {
       tracing_level: LevelFilter::INFO,
       suppress_target_output: false,
       print_hook_logs_to_console: false,
+      pipe_target_output: false
     }
   }
 }

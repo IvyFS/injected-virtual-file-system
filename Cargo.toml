@@ -68,3 +68,6 @@ win-api = { package = "windows", version = "0.61", features = [
 win-types = { package = "windows-core", version = "0.61" }
 windows-strings = "0.4.2"
 windows-version = "0.1.4"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(enable_for_ide)'] }

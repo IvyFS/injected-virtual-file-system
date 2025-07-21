@@ -1,14 +1,20 @@
 use frida_gum::{Gum, Module};
 use shared_types::HookError;
 
-mod find_first_file;
+#[cfg(enable_for_ide)]
+/// Module(s) here contain hooks the original usvfs added but don't seem to be necessary, either because of design
+/// differences or potentially them not being necessary to hook in the first place regardless of implementation.
+mod unused;
+
+mod get_file_attributes;
+mod get_full_path_name;
 mod nt_close;
 mod nt_create_file;
 mod nt_open_file;
 mod nt_query_directory_file;
 mod nt_query_object;
 
-pub(crate) use find_first_file::*;
+pub(crate) use get_file_attributes::*;
 pub(crate) use nt_close::*;
 pub(crate) use nt_create_file::*;
 pub(crate) use nt_open_file::*;
@@ -18,10 +24,10 @@ pub(crate) use nt_query_object::*;
 pub(crate) type FuncPatcher = fn(&Gum, &Module, &str) -> Result<(), HookError>;
 
 pub static WIN32_TARGETS: [(&str, Option<FuncPatcher>); 34] = [
-  ("GetFileAttributesExA", None),
-  ("GetFileAttributesA", None),
-  ("GetFileAttributesExW", None),
-  ("GetFileAttributesW", None),
+  ("GetFileAttributesExA", Some(get_file_attributes_ex_a)),
+  ("GetFileAttributesA", Some(get_file_attributes_a)),
+  ("GetFileAttributesExW", Some(get_file_attributes_ex_w)),
+  ("GetFileAttributesW", Some(get_file_attributes_w)),
   ("SetFileAttributesW", None),
   ("CreateDirectoryW", None),
   ("RemoveDirectoryW", None),
@@ -47,15 +53,14 @@ pub static WIN32_TARGETS: [(&str, Option<FuncPatcher>); 34] = [
   ("WritePrivateProfileStringW", None),
   ("GetFullPathNameA", None),
   ("GetFullPathNameW", None),
-  ("FindFirstFileExW", Some(find_first_file_ex_w)),
+  ("FindFirstFileExW", None),
   ("LoadLibraryExA", None),
   ("LoadLibraryExW", None),
   ("GetModuleFileNameA", None),
   ("GetModuleFileNameW", None),
 ];
 
-pub static WIN8_PLUS_WIN32_TARGETS: [(&str, Option<FuncPatcher>); 1] =
-  [("CopyFile2", None)];
+pub static WIN8_PLUS_WIN32_TARGETS: [(&str, Option<FuncPatcher>); 1] = [("CopyFile2", None)];
 
 pub static NT_TARGETS: [(&str, Option<FuncPatcher>); 11] = [
   ("NtQueryFullAttributesFile", None),

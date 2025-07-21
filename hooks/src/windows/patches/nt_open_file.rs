@@ -12,7 +12,7 @@ use win_api::{
 use crate::{
   log::{logfmt_dbg, trace_expr},
   windows::os_types::{
-    handles::{get_virtual_path, ObjectAttributesExt, HANDLE_MAP},
+    handles::{HANDLE_MAP, ObjectAttributesExt, get_virtual_path},
     object_attributes::RawObjectAttrsExt,
   },
 };
@@ -39,9 +39,7 @@ pub unsafe extern "system" fn detour_nt_open_file(
   openoptions: u32,
 ) -> NTSTATUS {
   let res = trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
-    let original_fn = original();
-
-    let path: PathBuf = dbg!(attrs.path())?;
+    let path: PathBuf = attrs.path()?;
     let (attrs, reroute_guard) = if let Some(virtual_path) = get_virtual_path(&path)? {
       let attrs = attrs.reroute(virtual_path.path)?;
       (&raw const attrs.attrs, Some(attrs))
@@ -49,7 +47,7 @@ pub unsafe extern "system" fn detour_nt_open_file(
       (attrs, None)
     };
 
-    let res = original_fn(
+    let res = original_nt_open_file(
       filehandle,
       desiredaccess,
       attrs,
@@ -58,6 +56,7 @@ pub unsafe extern "system" fn detour_nt_open_file(
       openoptions,
     );
 
+    logfmt_dbg!("{:x}", res.0);
     if res.is_ok() {
       if let Some(reroute) = reroute_guard {
         logfmt_dbg!(

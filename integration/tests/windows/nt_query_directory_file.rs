@@ -25,7 +25,7 @@ pub fn query_directory_file_all(handle: HANDLE) -> Vec<widestring::U16CString> {
     let mut io_status_block: IO_STATUS_BLOCK = Default::default();
     let mut file_infomation: [u8; BUF_LEN] = [0; BUF_LEN];
     unsafe {
-      let (_prefix, aligned, suffix) = file_infomation.align_to_mut::<FILE_DIRECTORY_INFORMATION>();
+      let (prefix, aligned, _suffix) = file_infomation.align_to_mut::<FILE_DIRECTORY_INFORMATION>();
 
       let status = NtQueryDirectoryFileEx(
         handle,
@@ -34,7 +34,7 @@ pub fn query_directory_file_all(handle: HANDLE) -> Vec<widestring::U16CString> {
         None,
         &raw mut io_status_block,
         aligned.as_mut_ptr() as _,
-        BUF_LEN as u32 - suffix.len() as u32,
+        BUF_LEN as u32 - prefix.len() as u32,
         FileDirectoryInformation,
         SL_RETURN_SINGLE_ENTRY,
         None,
@@ -107,3 +107,5 @@ fn nt_open_query() {
   }
   assert_eq!(found.len(), 4)
 }
+
+// TODO: add restart test

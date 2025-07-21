@@ -22,6 +22,7 @@ use shared_types::{
     injector::{InjectorConfig, TargetConfig},
   },
 };
+use tokio::sync::Notify;
 
 use config::Cli;
 use tracing::HOOKED_PROCESS_OUTPUT_TARGET;
@@ -35,6 +36,8 @@ static HOOK: &'static [u8] = include_bytes!(env!("CARGO_CDYLIB_FILE_AGENT"));
 static HOOK: &str = env!("CARGO_CDYLIB_FILE_AGENT");
 
 static FRIDA: LazyLock<Frida> = LazyLock::new(|| unsafe { Frida::obtain() });
+
+static NOTIFIER: Notify = Notify::const_new();
 
 fn main() {
   let cli = Cli::parse();
@@ -55,7 +58,7 @@ fn main() {
 
   let pid = target_config
     .pid
-    .unwrap_or_else(|| spawn_target(&target_config, &mut device));
+    .unwrap_or_else(|| spawn_target(&target_config, config.debug.pipe_target_output, &mut device));
 
   let runtime = tokio::runtime::Builder::new_multi_thread()
     .enable_all()
@@ -118,6 +121,8 @@ fn main() {
     };
     let ctrlc_signal = tokio::signal::ctrl_c();
     runtime.block_on(async move {
+      // NOTIFIER.notified().await;
+
       tokio::pin!(deadline_check);
 
       tokio::select! {
@@ -136,23 +141,23 @@ fn main() {
   }
 }
 
-fn spawn_target(target_config: &TargetConfig, device: &mut Device) -> u32 {
-  let mut options = SpawnOptions::default()
-    .stdio(frida::SpawnStdio::Pipe)
-    .argv(&target_config.args);
+fn spawn_target(target_config: &TargetConfig, pipe_stdio: bool, device: &mut Device) -> u32 {
+  let mut options = SpawnOptions::default().argv(&target_config.args);
 
   if let Some(working_dir) = &target_config.working_dir {
     options = options.cwd(CString::from_str(&working_dir.to_string_lossy()).unwrap())
   }
 
-  device.add_output_listener(Output);
+  if pipe_stdio {
+    options = options.stdio(frida::SpawnStdio::Pipe);
+    device.add_output_listener(Output);
+  }
 
   device.spawn(&target_config.executable, &options).unwrap()
 }
 
 // TODO: split this into a public module
 fn message_listener(listener: Listener, exit_once_patched: bool) {
-  dbg!(exit_once_patched);
   for stream in listener.incoming().filter_map(Result::ok) {
     let mut reader = BufReader::new(stream);
 
@@ -174,9 +179,12 @@ fn message_listener(listener: Listener, exit_once_patched: bool) {
           info!("shutdown");
           return;
         }
-        Message::FinishedPatching if exit_once_patched => {
-          println!("exiting early");
-          return;
+        Message::FinishedPatching => {
+          NOTIFIER.notify_one();
+          if exit_once_patched {
+            println!("exiting early");
+            return;
+          }
         }
         _ => {
           debug!(target: "hooked_process.hooks", "{message}")

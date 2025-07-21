@@ -45,7 +45,7 @@ fn create_open_dir_manual() {
   let virtual_root = workspace_root.join("integration\\target_folder");
   let mount_point = workspace_root.join("integration\\examples");
 
-  inject_self(&virtual_root, mount_point.join("*"));
+  inject_self(&virtual_root, &mount_point);
 
   unsafe {
     let filehandle = nt_create_open_existing_dir(&mount_point);

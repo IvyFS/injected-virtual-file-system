@@ -1,3 +1,4 @@
+use quote::format_ident;
 use unsynn::{
   Colon, Comma, CommaDelimitedVec, Cons, Delimited, DelimitedVec, Either, Except, Gt, IParse,
   Ident, Lt, Many, Nothing, ParenthesisGroupContaining, RArrow, Span, ToTokens, TokenIter,
@@ -5,7 +6,7 @@ use unsynn::{
 };
 
 use crate::windows::output::{
-  DefaultDetour, FnImplArg, Mod, OriginalFnPtrCell, Output, Patcher, TargetSignature,
+  DefaultDetour, FnImplArg, Mod, OriginalFn, Output, Patcher, TargetSignature,
 };
 
 mod output;
@@ -52,6 +53,8 @@ pub(crate) fn generate_patch(input: TokenStream) -> TokenStream {
 
   let returns = input.returns.as_ref().map(|returns| returns.second.clone());
 
+  let original_fn_name = format_ident!("original_{}", snake_name);
+
   let (detour_name, default_detour) = if let Some(detour) = input.detour {
     (detour.second, None)
   } else {
@@ -66,20 +69,26 @@ pub(crate) fn generate_patch(input: TokenStream) -> TokenStream {
         fn_impl_args,
         returns.clone(),
         bindings,
+        original_fn_name.clone(),
       )),
     )
   };
 
   let target_sig_name = Ident::new(&format!("{}Func", &target_name), Span::call_site());
   let target_sig_args: CommaDelimitedVec<Typ> = map_args_to_comma_delim_vec(&args, Arg::get_typ);
-  let target_signature = TargetSignature::new(target_sig_name.clone(), target_sig_args, returns);
+  let target_signature =
+    TargetSignature::new(target_sig_name.clone(), target_sig_args, returns.clone());
 
-  let cell_name = Ident::new(
-    &format!("ORIGINAL_{}", snake_name.to_ascii_uppercase()),
-    Span::call_site(),
+  let cell_name = format_ident!("ORIGINAL_CELL_{}", snake_name.to_ascii_uppercase());
+  let original_fn_cell = OriginalFn::new(
+    cell_name.clone(),
+    target_sig_name,
+    original_fn_name,
+    map_args_to_comma_delim_vec(&args, Arg::as_fn_impl_arg),
+    returns.clone(),
+    map_args_to_comma_delim_vec(&args, Arg::get_ident),
+    detour_name.clone(),
   );
-  let original_fn_cell =
-    OriginalFnPtrCell::new(cell_name.clone(), target_sig_name, detour_name.clone());
 
   let name = Ident::new(&snake_name, Span::call_site());
   let patcher = Patcher::new(name.clone(), target_name, detour_name, cell_name);

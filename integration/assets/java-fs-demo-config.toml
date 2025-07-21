@@ -1,0 +1,18 @@
+[virtual_filesystem]
+mount_point = "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\examples"
+virtual_root = "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\target_folder"
+
+[debug]
+print_hook_logs_to_console = true
+pipe_target_output = false
+
+[target]
+executable = "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\assets\\jdk\\bin\\java.exe"
+working_dir = "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration"
+args = [
+  "-jar",
+  "-classpath",
+  "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\assets\\java-fs-demo\\build\\libs\\java-fs-demo-0.0.1.jar",
+  "FsDemo",
+  "examples"
+]

@@ -1,6 +1,6 @@
-// #![feature(maybe_uninit_slice)]
 #![feature(normalize_lexically)]
 #![feature(breakpoint)]
+#![feature(maybe_uninit_slice)]
 
 use frida_gum::{Gum, Process};
 use shared_types::{
