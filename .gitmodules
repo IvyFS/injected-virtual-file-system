@@ -1,0 +1,3 @@
+[submodule "integration/assets/java-fs-demo"]
+	path = integration/assets/java-fs-demo
+	url = https://github.com/atlanticaccent/java-fs-demo.git
