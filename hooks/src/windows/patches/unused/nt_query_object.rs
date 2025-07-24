@@ -1,8 +1,10 @@
 use proc_macros::patch_fn;
 use win_api::{
   Wdk::Foundation::OBJECT_INFORMATION_CLASS,
-  Win32::Foundation::{HANDLE, NTSTATUS},
+  Win32::Foundation::{HANDLE, NTSTATUS, STATUS_INVALID_HANDLE},
 };
+
+use crate::{log::trace_expr, windows::os_types::handles::HANDLE_MAP};
 
 patch_fn!(
   NtQueryObject,
@@ -23,7 +25,9 @@ unsafe extern "system" fn detour_nt_query_object(
   information_length: u32,
   return_length: *mut u32,
 ) -> NTSTATUS {
-  unsafe {
+  trace_expr!(STATUS_INVALID_HANDLE, unsafe {
+    let path = HANDLE_MAP.get_by_handle(handle).andt;
+
     let res = original_nt_query_object(
       handle,
       object_information_class,
@@ -32,6 +36,6 @@ unsafe extern "system" fn detour_nt_query_object(
       return_length,
     );
 
-    res
-  }
+    Ok(res)
+  })
 }

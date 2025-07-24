@@ -12,8 +12,9 @@ use win_api::{
 use crate::{
   log::{logfmt_dbg, trace_expr},
   windows::os_types::{
-    handles::{HANDLE_MAP, ObjectAttributesExt, get_virtual_path},
+    handles::{HANDLE_MAP, ObjectAttributesExt},
     object_attributes::RawObjectAttrsExt,
+    paths::get_virtual_path,
   },
 };
 

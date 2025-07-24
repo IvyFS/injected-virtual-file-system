@@ -10,7 +10,6 @@ pipe_target_output = false
 executable = "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\assets\\jdk\\bin\\java.exe"
 working_dir = "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration"
 args = [
-  "-jar",
   "-classpath",
   "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\assets\\java-fs-demo\\build\\libs\\java-fs-demo-0.0.1.jar",
   "FsDemo",

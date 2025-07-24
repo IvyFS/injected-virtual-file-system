@@ -1,7 +1,6 @@
 use std::{
   ffi::{OsStr, OsString},
   fmt::Debug,
-  ops::Deref,
   os::windows::ffi::OsStringExt,
   path::Path,
 };
@@ -12,8 +11,6 @@ use win_api::{
   Wdk::Storage::FileSystem::RtlInitUnicodeStringEx, Win32::Foundation::UNICODE_STRING,
 };
 use win_types::PCWSTR;
-
-use crate::windows::os_types::paths::maybe_verbatim;
 
 pub struct OwnedUnicodeString {
   pub string_buffer: widestring::U16CString,
@@ -35,37 +32,6 @@ impl OwnedUnicodeString {
 
   pub unsafe fn path_to_unicode_nt_path(path: impl AsRef<Path>) -> Result<Self, HookError> {
     Self::new(path.as_ref(), Some("\\??\\"), nil_fix())
-  }
-
-  pub unsafe fn path_to_unicode(path: impl AsRef<Path>) -> Result<Self, HookError> {
-    let prefixed = [
-      widestring::u16str!("\\??\\").as_slice(),
-      maybe_verbatim(path.as_ref())?.as_slice(),
-    ]
-    .concat();
-    let string_buffer = unsafe { widestring::U16CString::from_ptr_str(prefixed.as_ptr()) };
-
-    let mut unicode_string = UNICODE_STRING::default();
-    let pcwstr = PCWSTR::from_raw(string_buffer.as_ptr());
-    let res = unsafe { RtlInitUnicodeStringEx(&mut unicode_string, pcwstr) };
-    if res.is_err() {
-      Err(HookError::UnicodeInit(OsString::from_wide(unsafe {
-        pcwstr.as_wide()
-      })))
-    } else {
-      Ok(OwnedUnicodeString {
-        string_buffer,
-        unicode_ptr: Box::into_raw(Box::new(unicode_string)),
-      })
-    }
-  }
-
-  pub fn transact<T>(&self, func: impl FnOnce(*const UNICODE_STRING) -> T) -> T {
-    func(self.unicode_ptr)
-  }
-
-  pub fn as_unicode_str(&'_ self) -> UnicodeStringGuard<'_> {
-    UnicodeStringGuard(self)
   }
 }
 
@@ -137,22 +103,6 @@ impl TryFrom<U16CString> for OwnedUnicodeString {
   }
 }
 
-pub struct UnicodeStringGuard<'a>(&'a OwnedUnicodeString);
-
-impl<'a> Deref for UnicodeStringGuard<'a> {
-  type Target = *const UNICODE_STRING;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0.unicode_ptr
-  }
-}
-
-impl Drop for OwnedUnicodeString {
-  fn drop(&mut self) {
-    unsafe { drop(Box::from_raw(self.unicode_ptr.cast_mut())) };
-  }
-}
-
 pub unsafe fn format_unicode_string(
   base: impl AsRef<OsStr>,
   prefix: Option<impl AsRef<OsStr>>,
@@ -196,7 +146,7 @@ mod test {
 
     let unicode_inner = unsafe {
       owned_unicode
-        .as_unicode_str()
+        .unicode_ptr
         .ref_cast()
         .unwrap()
         .Buffer

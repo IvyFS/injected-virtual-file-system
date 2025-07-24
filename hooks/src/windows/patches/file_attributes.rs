@@ -6,10 +6,12 @@ use std::{
 
 use proc_macros::patch_fn;
 use shared_types::HookError;
-use win_api::Win32::Storage::FileSystem::{GET_FILEEX_INFO_LEVELS, INVALID_FILE_ATTRIBUTES};
-use win_types::{PCSTR, PCWSTR};
+use win_api::Win32::Storage::FileSystem::{
+  FILE_FLAGS_AND_ATTRIBUTES, GET_FILEEX_INFO_LEVELS, INVALID_FILE_ATTRIBUTES,
+};
+use win_types::{BOOL, PCSTR, PCWSTR};
 
-use crate::{log::trace_expr, windows::os_types::handles::get_virtual_path};
+use crate::{log::trace_expr, windows::os_types::paths::get_virtual_path};
 
 patch_fn! {
   GetFileAttributesA,
@@ -140,6 +142,25 @@ fn wide_virtual_path(
       .unwrap_or(filename),
     virtual_path,
   ))
+}
+
+patch_fn! {
+  SetFileAttributesW,
+  (PCWSTR, FILE_FLAGS_AND_ATTRIBUTES) -> BOOL,
+  detour_set_file_attributes_w
+}
+
+unsafe extern "system" fn detour_set_file_attributes_w(
+  filename: PCWSTR,
+  file_attributes: FILE_FLAGS_AND_ATTRIBUTES,
+) -> BOOL {
+  trace_expr!(BOOL(0), unsafe {
+    let (path, _virtual_guard) = wide_virtual_path(filename)?;
+
+    let res = original_set_file_attributes_w(path, file_attributes);
+
+    Ok(res)
+  })
 }
 
 #[cfg(test)]

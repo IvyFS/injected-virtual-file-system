@@ -22,11 +22,7 @@ use win_api::{
 };
 
 use crate::{
-  extension_traits::DashExt,
-  log::logfmt_dbg,
-  raw_ptr::UnsafeRefCast,
-  virtual_paths::{MOUNT_POINT, VIRTUAL_ROOT, windows::VirtualPath},
-  windows::os_types::paths::strip_nt_prefix,
+  extension_traits::DashExt, raw_ptr::UnsafeRefCast, windows::os_types::paths::strip_nt_prefix,
 };
 
 #[allow(dead_code)]
@@ -107,6 +103,7 @@ pub fn std_open_dir_handle_unhooked(path: impl AsRef<Path>) -> Result<Handle, Ho
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct HandleInfo {
   pub path: PathBuf,
   pub handle: Handle,
@@ -158,8 +155,9 @@ impl ObjectAttributesExt for OBJECT_ATTRIBUTES {
   unsafe fn path(&self) -> Result<PathBuf, HookError> {
     unsafe {
       let unicode_string = self.ObjectName.ref_cast()?;
-      let stem_raw =
-        OsString::from_wide(&unicode_string.Buffer.as_wide()[..(unicode_string.Length / 2) as usize]);
+      let stem_raw = OsString::from_wide(
+        &unicode_string.Buffer.as_wide()[..(unicode_string.Length / 2) as usize],
+      );
       let stem: &Path = stem_raw.as_ref();
 
       // TODO?: canonicalize but preserve nt prefix?
@@ -199,27 +197,6 @@ pub unsafe fn path_from_handle(handle: &HANDLE) -> Result<String, HookError> {
     } else {
       Err(HookError::PathFromFileHandle)
     }
-  }
-}
-
-pub fn get_virtual_path(path: impl AsRef<Path>) -> Result<Option<VirtualPath>, HookError> {
-  let trimmed = strip_nt_prefix(&path);
-  let canon = dunce::simplified(trimmed).to_path_buf();
-
-  match canon.strip_prefix(MOUNT_POINT.read()?.as_path()) {
-    Ok(stem) => {
-      let virtual_root = VIRTUAL_ROOT.read()?;
-      let rerouted_path = if !stem.as_os_str().is_empty() {
-        virtual_root.join(stem)
-      } else {
-        virtual_root.to_path_buf()
-      };
-      Ok(Some(VirtualPath {
-        path: rerouted_path,
-        original: canon.to_path_buf(),
-      }))
-    }
-    _ => Ok(None),
   }
 }
 

@@ -23,8 +23,9 @@ use crate::{
   extension_traits::DashExt,
   log::{logfmt_dbg, trace_expr},
   windows::{
-    os_types::handles::{
-      HANDLE_MAP, Handle, get_virtual_path, into_handle, std_open_dir_handle_unhooked,
+    os_types::{
+      handles::{HANDLE_MAP, Handle, into_handle, std_open_dir_handle_unhooked},
+      paths::get_virtual_path,
     },
     patches::nt_close_detour,
   },

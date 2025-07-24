@@ -6,20 +6,22 @@ use shared_types::HookError;
 /// differences or potentially them not being necessary to hook in the first place regardless of implementation.
 mod unused;
 
-mod get_file_attributes;
+mod file_attributes;
 mod get_full_path_name;
+mod private_profile_strings;
+
 mod nt_close;
 mod nt_create_file;
 mod nt_open_file;
 mod nt_query_directory_file;
-mod nt_query_object;
+mod nt_query_information_by_name;
 
-pub(crate) use get_file_attributes::*;
+pub(crate) use file_attributes::*;
 pub(crate) use nt_close::*;
 pub(crate) use nt_create_file::*;
 pub(crate) use nt_open_file::*;
 pub(crate) use nt_query_directory_file::*;
-pub(crate) use nt_query_object::*;
+pub(crate) use nt_query_information_by_name::*;
 
 pub(crate) type FuncPatcher = fn(&Gum, &Module, &str) -> Result<(), HookError>;
 
@@ -28,7 +30,7 @@ pub static WIN32_TARGETS: [(&str, Option<FuncPatcher>); 34] = [
   ("GetFileAttributesA", Some(get_file_attributes_a)),
   ("GetFileAttributesExW", Some(get_file_attributes_ex_w)),
   ("GetFileAttributesW", Some(get_file_attributes_w)),
-  ("SetFileAttributesW", None),
+  ("SetFileAttributesW", Some(set_file_attributes_w)),
   ("CreateDirectoryW", None),
   ("RemoveDirectoryW", None),
   ("DeleteFileW", None),
@@ -53,25 +55,30 @@ pub static WIN32_TARGETS: [(&str, Option<FuncPatcher>); 34] = [
   ("WritePrivateProfileStringW", None),
   ("GetFullPathNameA", None),
   ("GetFullPathNameW", None),
-  ("FindFirstFileExW", None),
   ("LoadLibraryExA", None),
   ("LoadLibraryExW", None),
   ("GetModuleFileNameA", None),
   ("GetModuleFileNameW", None),
+  // Unnecessary
+  ("FindFirstFileExW", None),
 ];
 
 pub static WIN8_PLUS_WIN32_TARGETS: [(&str, Option<FuncPatcher>); 1] = [("CopyFile2", None)];
 
 pub static NT_TARGETS: [(&str, Option<FuncPatcher>); 11] = [
-  ("NtQueryFullAttributesFile", None),
-  ("NtQueryAttributesFile", None),
   ("NtQueryDirectoryFile", Some(nt_query_directory_file)),
   ("NtQueryDirectoryFileEx", Some(nt_query_directory_file_ex)),
-  ("NtQueryObject", Some(nt_query_object)),
-  ("NtQueryInformationFile", None),
-  ("NtQueryInformationByName", None),
+  (
+    "NtQueryInformationByName",
+    Some(nt_query_information_by_name),
+  ),
   ("NtOpenFile", Some(nt_open_file)),
   ("NtCreateFile", Some(nt_create_file)),
   ("NtClose", Some(nt_close)),
   ("NtTerminateProcess", None),
+  // Unnecessary
+  ("NtQueryObject", None),
+  ("NtQueryInformationFile", None),
+  ("NtQueryFullAttributesFile", None),
+  ("NtQueryAttributesFile", None),
 ];

@@ -6,8 +6,6 @@ virtual_root = "C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\target_fol
 executable = "D:\\Games\\Starsector\\jre\\bin\\java.exe"
 working_dir = "D:\\Games\\Starsector\\starsector-core"
 args = [
-  "-Xdebug",
-  "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005",
   "-noverify",
   "-XX:+UnlockDiagnosticVMOptions",
   "-XX:+UnlockExperimentalVMOptions",
