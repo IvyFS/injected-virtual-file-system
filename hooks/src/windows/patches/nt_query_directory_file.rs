@@ -22,11 +22,9 @@ use win_api::{
 use crate::{
   extension_traits::DashExt,
   log::{logfmt_dbg, trace_expr},
+  virtual_paths::windows::get_virtual_path,
   windows::{
-    os_types::{
-      handles::{HANDLE_MAP, Handle, into_handle, std_open_dir_handle_unhooked},
-      paths::get_virtual_path,
-    },
+    os_types::handles::{HANDLE_MAP, Handle, into_handle, std_open_dir_handle_unhooked},
     patches::nt_close_detour,
   },
 };

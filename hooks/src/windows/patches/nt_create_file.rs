@@ -16,10 +16,10 @@ pub use win_api::{
 
 use crate::{
   log::{logfmt_dbg, trace_expr},
+  virtual_paths::windows::get_virtual_path,
   windows::os_types::{
     handles::{DO_NOT_HOOK, HANDLE_MAP, ObjectAttributesExt},
     object_attributes::RawObjectAttrsExt,
-    paths::get_virtual_path,
   },
 };
 

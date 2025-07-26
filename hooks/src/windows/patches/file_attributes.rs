@@ -1,17 +1,15 @@
-use std::{
-  ffi::{OsString, c_void},
-  os::windows::ffi::OsStringExt,
-  path::{Path, PathBuf},
-};
+use std::ffi::c_void;
 
 use proc_macros::patch_fn;
-use shared_types::HookError;
 use win_api::Win32::Storage::FileSystem::{
   FILE_FLAGS_AND_ATTRIBUTES, GET_FILEEX_INFO_LEVELS, INVALID_FILE_ATTRIBUTES,
 };
 use win_types::{BOOL, PCSTR, PCWSTR};
 
-use crate::{log::trace_expr, windows::os_types::paths::get_virtual_path};
+use crate::{
+  log::trace_expr,
+  virtual_paths::windows::{VirtualPathOption, get_virtual_path_or_ansi, get_virtual_path_or_wide},
+};
 
 patch_fn! {
   GetFileAttributesA,
@@ -21,9 +19,11 @@ patch_fn! {
 
 unsafe extern "system" fn detour_get_file_attributes_a(filename: PCSTR) -> u32 {
   trace_expr!(INVALID_FILE_ATTRIBUTES, unsafe {
-    let (path, _virtual_guard) = ansi_virtual_path(filename)?;
+    let mut virtual_path_res = get_virtual_path_or_ansi(filename)?;
 
-    Ok(original_get_file_attributes_a(path))
+    Ok(original_get_file_attributes_a(
+      virtual_path_res.as_raw_or_original(),
+    ))
   })
 }
 
@@ -39,45 +39,14 @@ unsafe extern "system" fn detour_get_file_attributes_ex_a(
   file_information: *mut c_void,
 ) -> u32 {
   trace_expr!(INVALID_FILE_ATTRIBUTES, unsafe {
-    let (path, _virtual_guard) = ansi_virtual_path(filename)?;
+    let mut virtual_path_res = get_virtual_path_or_ansi(filename)?;
 
     Ok(original_get_file_attributes_ex_a(
-      path,
+      virtual_path_res.as_raw_or_original(),
       info_level_id,
       file_information,
     ))
   })
-}
-
-#[track_caller]
-fn ansi_virtual_path(filename: PCSTR) -> Result<(PCSTR, Option<Box<[u8]>>), HookError> {
-  let given_path = { Path::new(unsafe { str::from_utf8_unchecked(filename.as_bytes()) }) };
-  let canon_path = given_path
-    .is_relative()
-    .then(|| {
-      std::env::current_dir().and_then(|current_dir| {
-        let joined = current_dir.join(&given_path);
-        joined.normalize_lexically().map_err(std::io::Error::other)
-      })
-    })
-    .transpose()?;
-
-  let virtual_path = get_virtual_path(canon_path.as_deref().unwrap_or(given_path))?.map(|virt| {
-    virt
-      .path
-      .as_os_str()
-      .as_encoded_bytes()
-      .to_vec()
-      .into_boxed_slice()
-  });
-
-  Ok((
-    virtual_path
-      .as_ref()
-      .map(|virt| PCSTR::from_raw(virt.as_ptr()))
-      .unwrap_or(filename),
-    virtual_path,
-  ))
 }
 
 patch_fn! {
@@ -88,9 +57,11 @@ patch_fn! {
 
 unsafe extern "system" fn detour_get_file_attributes_w(filename: PCWSTR) -> u32 {
   trace_expr!(INVALID_FILE_ATTRIBUTES, unsafe {
-    let (path, _virtual_guard) = wide_virtual_path(filename)?;
+    let mut virtual_path_res = get_virtual_path_or_wide(filename)?;
 
-    Ok(original_get_file_attributes_w(path))
+    Ok(original_get_file_attributes_w(
+      virtual_path_res.as_raw_or_original(),
+    ))
   })
 }
 
@@ -106,42 +77,14 @@ unsafe extern "system" fn detour_get_file_attributes_ex_w(
   file_information: *mut c_void,
 ) -> u32 {
   trace_expr!(INVALID_FILE_ATTRIBUTES, unsafe {
-    let (path, _virtual_guard) = wide_virtual_path(filename)?;
+    let mut virtual_path_res = get_virtual_path_or_wide(filename)?;
 
     Ok(original_get_file_attributes_ex_w(
-      path,
+      virtual_path_res.as_raw_or_original(),
       info_level_id,
       file_information,
     ))
   })
-}
-
-#[track_caller]
-fn wide_virtual_path(
-  filename: PCWSTR,
-) -> Result<(PCWSTR, Option<widestring::U16CString>), HookError> {
-  let given_path = PathBuf::from(unsafe { OsString::from_wide(filename.as_wide()) });
-  let canon_path = given_path
-    .is_relative()
-    .then(|| {
-      std::env::current_dir().and_then(|current_dir| {
-        current_dir
-          .join(&given_path)
-          .normalize_lexically()
-          .map_err(std::io::Error::other)
-      })
-    })
-    .transpose()?;
-  let virtual_path = get_virtual_path(canon_path.unwrap_or(given_path))?
-    .map(|virt| widestring::U16CString::from_os_str_truncate(virt.path));
-
-  Ok((
-    virtual_path
-      .as_ref()
-      .map(|virt| PCWSTR::from_raw(virt.as_ptr()))
-      .unwrap_or(filename),
-    virtual_path,
-  ))
 }
 
 patch_fn! {
@@ -155,9 +98,10 @@ unsafe extern "system" fn detour_set_file_attributes_w(
   file_attributes: FILE_FLAGS_AND_ATTRIBUTES,
 ) -> BOOL {
   trace_expr!(BOOL(0), unsafe {
-    let (path, _virtual_guard) = wide_virtual_path(filename)?;
+    let mut virtual_path_res = get_virtual_path_or_wide(filename)?;
 
-    let res = original_set_file_attributes_w(path, file_attributes);
+    let res =
+      original_set_file_attributes_w(virtual_path_res.as_raw_or_original(), file_attributes);
 
     Ok(res)
   })
