@@ -22,6 +22,7 @@ pub(crate) use nt_create_file::*;
 pub(crate) use nt_open_file::*;
 pub(crate) use nt_query_directory_file::*;
 pub(crate) use nt_query_information_by_name::*;
+use private_profile_strings::*;
 
 pub(crate) type FuncPatcher = fn(&Gum, &Module, &str) -> Result<(), HookError>;
 
@@ -47,18 +48,25 @@ pub static WIN32_TARGETS: [(&str, Option<FuncPatcher>); 34] = [
   ("MoveFileWithProgressA", None),
   ("MoveFileWithProgressW", None),
   ("CopyFileExW", None),
-  ("GetPrivateProfileStringA", None),
-  ("GetPrivateProfileStringW", None),
-  ("GetPrivateProfileSectionA", None),
-  ("GetPrivateProfileSectionW", None),
-  ("WritePrivateProfileStringA", None),
-  ("WritePrivateProfileStringW", None),
   ("GetFullPathNameA", None),
   ("GetFullPathNameW", None),
   ("LoadLibraryExA", None),
   ("LoadLibraryExW", None),
   ("GetModuleFileNameA", None),
   ("GetModuleFileNameW", None),
+  // These should be necessary for 16-bit application compatibility
+  (
+    "GetPrivateProfileStringA",
+    Some(get_private_profile_string_a),
+  ),
+  (
+    "GetPrivateProfileStringW",
+    Some(get_private_profile_string_w),
+  ),
+  ("GetPrivateProfileSectionA", None),
+  ("GetPrivateProfileSectionW", None),
+  ("WritePrivateProfileStringA", None),
+  ("WritePrivateProfileStringW", None),
   // Unnecessary
   ("FindFirstFileExW", None),
 ];

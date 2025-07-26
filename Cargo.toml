@@ -26,7 +26,6 @@ injector = { path = "injector" }
 proc-macros = { path = "proc-macros" }
 
 # External
-crabtime = { git = "https://github.com/wdanilo/crabtime.git", branch = "main" }
 frida = { git = "https://github.com/atlanticaccent/frida-rust.git", branch = "add-device-output-listener", features = [
   "auto-download",
 ] }
@@ -64,6 +63,7 @@ win-api = { package = "windows", version = "0.61", features = [
   "Win32_Storage_FileSystem",
   "Win32_Security",
   "Win32_System_IO",
+  "Win32_System_WindowsProgramming",
 ] }
 win-types = { package = "windows-core", version = "0.61" }
 windows-strings = "0.4.2"
