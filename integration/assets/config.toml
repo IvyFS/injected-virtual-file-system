@@ -1,0 +1,16 @@
+exit_once_patched = true
+
+[virtual_filesystem]
+mp = 'C:\Users\wanty\AppData\Local\Temp\mount_dir.aDIbFIbCG87y'
+vr = 'C:\Users\wanty\AppData\Local\Temp\virtual_dir.PG5ML8Cw4f7E'
+
+[debug]
+enable_ipc_logging = false
+tracing_level = "info"
+suppress_target_output = false
+print_hook_logs_to_console = true
+pipe_target_output = false
+
+[target]
+executable = 'C:\Users\wanty\Documents\usvfs-rust\target\debug\dir_edit.exe'
+args = ['C:\Users\wanty\AppData\Local\Temp\mount_dir.aDIbFIbCG87y\expected', "delete"]

@@ -40,7 +40,7 @@ pub unsafe extern "system" fn detour_nt_open_file(
   openoptions: u32,
 ) -> NTSTATUS {
   let res = trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
-    let path: PathBuf = attrs.path()?;
+    let path: PathBuf = dbg!(attrs.path())?;
     let (attrs, reroute_guard) = if let Some(virtual_path) = get_virtual_path(&path)? {
       let attrs = attrs.reroute(virtual_path.path)?;
       (&raw const attrs.attrs, Some(attrs))

@@ -9,7 +9,12 @@ authors.workspace = true
 [dependencies]
 
 [dev-dependencies]
-injector = { path = "../injector", features = ["testing-no-embed"], artifact = "bin" }
+injector = { path = "../injector", features = [
+  "testing-no-embed",
+], artifact = "bin" }
+tempdir = "0.3.7"
+shared-types = { workspace = true }
+toml = { workspace = true }
 
 [target.'cfg(windows)'.dev-dependencies]
 widestring = { workspace = true }

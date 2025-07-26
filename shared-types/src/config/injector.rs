@@ -5,7 +5,7 @@ use tracing::level_filters::LevelFilter;
 
 use crate::config::VirtualFsConfig;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct InjectorConfig {
   pub virtual_filesystem: VirtualFsConfig,
   #[serde(default)]
@@ -22,7 +22,7 @@ impl InjectorConfig {
   }
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct TargetConfig {
   pub executable: String,
   pub working_dir: Option<PathBuf>,

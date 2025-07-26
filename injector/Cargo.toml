@@ -5,6 +5,7 @@ name = "injector"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+default-run = "injector"
 
 [features]
 testing-no-embed = []

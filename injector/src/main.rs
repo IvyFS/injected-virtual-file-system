@@ -107,7 +107,7 @@ fn main() {
     .inject_library_file_sync(pid, HOOK, "injected_function", entry_data)
     .unwrap();
 
-  info!("*** Injected, id={id}");
+  trace!("*** Injected, id={id}");
 
   if target_config.pid.is_none() {
     device.resume(pid).unwrap();

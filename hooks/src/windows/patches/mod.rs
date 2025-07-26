@@ -6,6 +6,7 @@ use shared_types::HookError;
 /// differences or potentially them not being necessary to hook in the first place regardless of implementation.
 mod unused;
 
+mod create_delete_directory;
 mod file_attributes;
 mod get_full_path_name;
 mod private_profile_strings;
@@ -16,6 +17,7 @@ mod nt_open_file;
 mod nt_query_directory_file;
 mod nt_query_information_by_name;
 
+use create_delete_directory::*;
 pub(crate) use file_attributes::*;
 pub(crate) use nt_close::*;
 pub(crate) use nt_create_file::*;
@@ -32,8 +34,8 @@ pub static WIN32_TARGETS: [(&str, Option<FuncPatcher>); 34] = [
   ("GetFileAttributesExW", Some(get_file_attributes_ex_w)),
   ("GetFileAttributesW", Some(get_file_attributes_w)),
   ("SetFileAttributesW", Some(set_file_attributes_w)),
-  ("CreateDirectoryW", None),
-  ("RemoveDirectoryW", None),
+  ("CreateDirectoryW", Some(create_directory_w)),
+  ("RemoveDirectoryW", Some(remove_directory_w)),
   ("DeleteFileW", None),
   ("GetCurrentDirectoryA", None),
   ("GetCurrentDirectoryW", None), // used in at least find_first_file

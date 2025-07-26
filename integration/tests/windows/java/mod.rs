@@ -24,12 +24,9 @@ pub(crate) fn java_list_dirs(capture: bool) -> Vec<String> {
 
   if capture {
     let output = command.output().unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let stdout = stdout.replace("[", "");
-    let stdout = stdout.replace("]", "");
-    let stdout = stdout.replace("target_folder\\", "");
-    let stdout = stdout.replace("\r\n", "");
+    let stdout = String::from_utf8_lossy(&output.stdout)
+      .replace(&['[', ']', '\r', '\n'], "")
+      .replace("examples\\", "");
 
     stdout.split(",").map(ToOwned::to_owned).collect()
   } else {
@@ -58,7 +55,7 @@ fn sanity_test() {
 fn absolute_redirect() {
   clean_and_build();
 
-  let found_files = java_list_dirs(false);
+  let found_files = dbg!(java_list_dirs(true));
 
   for expected in vec!["virtual_mod"] {
     assert!(
