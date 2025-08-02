@@ -1,8 +1,8 @@
 exit_once_patched = true
 
 [virtual_filesystem]
-mp = 'C:\Users\wanty\AppData\Local\Temp\mount_dir.aDIbFIbCG87y'
-vr = 'C:\Users\wanty\AppData\Local\Temp\virtual_dir.PG5ML8Cw4f7E'
+mp = 'C:\Users\wanty\AppData\Local\Temp\mount_dir.vr2SzKHuzqAu'
+vr = 'C:\Users\wanty\AppData\Local\Temp\virtual_dir.onzVCTg8o3sv'
 
 [debug]
 enable_ipc_logging = false
@@ -13,4 +13,4 @@ pipe_target_output = false
 
 [target]
 executable = 'C:\Users\wanty\Documents\usvfs-rust\target\debug\dir_edit.exe'
-args = ['C:\Users\wanty\AppData\Local\Temp\mount_dir.aDIbFIbCG87y\expected', "delete"]
+args = ['C:\Users\wanty\AppData\Local\Temp\mount_dir.vr2SzKHuzqAu\expected', "delete"]

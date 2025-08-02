@@ -1,5 +1,6 @@
 use std::{ffi::OsStr, path::Path};
 
+use proc_macros::ctest;
 use win_api::Win32::{
   Foundation::ERROR_NO_MORE_FILES,
   Storage::FileSystem::{
@@ -55,7 +56,7 @@ pub(crate) fn win32_find_files(filename: impl AsRef<OsStr>) -> Vec<widestring::U
   found_files
 }
 
-#[test]
+#[ctest(super::TESTS)]
 fn absolute_redirect() {
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");
@@ -79,7 +80,7 @@ fn absolute_redirect() {
   assert_eq!(found_files.len(), 4)
 }
 
-#[test]
+#[ctest(super::TESTS)]
 fn relative_redirect() {
   let common_dir = Path::new("D:/Games/Starsector");
   std::env::set_current_dir(common_dir.join("starsector-core")).unwrap();
@@ -106,7 +107,7 @@ fn relative_redirect() {
   assert_eq!(found_files.len(), 4)
 }
 
-#[test]
+#[ctest(super::TESTS)]
 fn no_redirect() {
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");

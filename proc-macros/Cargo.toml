@@ -10,3 +10,6 @@ proc-macro = true
 [dependencies]
 quote = "1.0.40"
 unsynn = { version = "0.1.1", default-features = false, features = ["docgen"] }
+unsynn-rust = { package = "facet-macros-parse", version = "0.28.0", features = [
+  "function",
+] }

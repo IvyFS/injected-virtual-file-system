@@ -1,3 +1,4 @@
+use proc_macros::ctest;
 use win_api::{
   Wdk::{
     Storage::FileSystem::{
@@ -58,7 +59,7 @@ pub fn query_directory_file_all(handle: HANDLE) -> Vec<widestring::U16CString> {
   res
 }
 
-#[test]
+#[ctest(super::TESTS)]
 fn nt_create_query() {
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");
@@ -83,7 +84,7 @@ fn nt_create_query() {
   assert_eq!(found.len(), 4)
 }
 
-#[test]
+#[ctest(super::TESTS)]
 fn nt_open_query() {
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");

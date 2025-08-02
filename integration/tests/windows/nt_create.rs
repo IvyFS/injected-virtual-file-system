@@ -3,6 +3,7 @@ use std::{
   path::Path,
 };
 
+use proc_macros::ctest;
 use win_api::{
   Wdk::{
     Foundation::OBJECT_ATTRIBUTES,
@@ -18,7 +19,7 @@ use windows_strings::PCWSTR;
 
 use crate::common::{inject_self, path_from_handle, workspace_root};
 
-#[test]
+#[ctest(super::TESTS)]
 fn create_open_dir_std() {
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");
@@ -39,7 +40,7 @@ fn create_open_dir_std() {
   );
 }
 
-#[test]
+#[ctest(super::TESTS)]
 fn create_open_dir_manual() {
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");
