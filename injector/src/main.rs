@@ -2,6 +2,7 @@ use std::{
   ffi::CString,
   hash::{Hash, Hasher},
   io::{BufRead, BufReader, Cursor, LineWriter, Write},
+  path::Path,
   process::exit,
   str::FromStr,
   sync::LazyLock,
@@ -109,6 +110,8 @@ fn main() {
 
   trace!("*** Injected, id={id}");
 
+  // TODO: resume only after getting confirmation from hook agent that patching is finished
+
   if target_config.pid.is_none() {
     device.resume(pid).unwrap();
   }
@@ -142,7 +145,14 @@ fn main() {
 }
 
 fn spawn_target(target_config: &TargetConfig, pipe_stdio: bool, device: &mut Device) -> u32 {
-  let mut options = SpawnOptions::default().argv(&target_config.args);
+  let executable_name = Path::new(&target_config.executable)
+    .file_name()
+    .map(|file_name| file_name.to_str())
+    .flatten()
+    .unwrap_or_default();
+  let args =
+    std::iter::once(executable_name).chain(target_config.args.iter().map(|arg| arg.as_str()));
+  let mut options = SpawnOptions::default().argv(args);
 
   if let Some(working_dir) = &target_config.working_dir {
     options = options.cwd(CString::from_str(&working_dir.to_string_lossy()).unwrap())
