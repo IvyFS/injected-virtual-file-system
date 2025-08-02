@@ -11,20 +11,22 @@ mod file_attributes;
 mod get_full_path_name;
 mod private_profile_strings;
 
+mod file_edit;
 mod nt_close;
 mod nt_create_file;
 mod nt_open_file;
 mod nt_query_directory_file;
 mod nt_query_information_by_name;
 
-use create_delete_directory::*;
+pub(crate) use create_delete_directory::*;
 pub(crate) use file_attributes::*;
+pub(crate) use file_edit::*;
 pub(crate) use nt_close::*;
 pub(crate) use nt_create_file::*;
 pub(crate) use nt_open_file::*;
 pub(crate) use nt_query_directory_file::*;
 pub(crate) use nt_query_information_by_name::*;
-use private_profile_strings::*;
+pub(crate) use private_profile_strings::*;
 
 pub(crate) type FuncPatcher = fn(&Gum, &Module, &str) -> Result<(), HookError>;
 
@@ -36,27 +38,27 @@ pub static WIN32_TARGETS: [(&str, Option<FuncPatcher>); 34] = [
   ("SetFileAttributesW", Some(set_file_attributes_w)),
   ("CreateDirectoryW", Some(create_directory_w)),
   ("RemoveDirectoryW", Some(remove_directory_w)),
-  ("DeleteFileW", None),
   ("GetCurrentDirectoryA", None),
   ("GetCurrentDirectoryW", None), // used in at least find_first_file
   ("SetCurrentDirectoryA", None),
   ("SetCurrentDirectoryW", None),
-  ("ExitProcess", None),
   ("CreateProcessInternalW", None),
-  ("MoveFileA", None),
-  ("MoveFileW", None),
-  ("MoveFileExA", None),
-  ("MoveFileExW", None),
-  ("MoveFileWithProgressA", None),
-  ("MoveFileWithProgressW", None),
-  ("CopyFileExW", None),
+  ("ExitProcess", None),
+  ("DeleteFileW", Some(delete_file_w)),
+  ("MoveFileA", Some(move_file_a)),
+  ("MoveFileExA", Some(move_file_ex_a)),
+  ("MoveFileW", Some(move_file_w)),
+  ("MoveFileExW", Some(move_file_ex_w)),
+  ("MoveFileWithProgressA", Some(move_file_with_progress_a)),
+  ("MoveFileWithProgressW", Some(move_file_with_progress_w)),
+  ("CopyFileExW", Some(copy_file_ex_w)),
   ("GetFullPathNameA", None),
   ("GetFullPathNameW", None),
   ("LoadLibraryExA", None),
   ("LoadLibraryExW", None),
   ("GetModuleFileNameA", None),
   ("GetModuleFileNameW", None),
-  // These should be necessary for 16-bit application compatibility
+  // These should only be necessary for 16-bit application compatibility
   (
     "GetPrivateProfileStringA",
     Some(get_private_profile_string_a),

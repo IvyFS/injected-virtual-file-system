@@ -57,7 +57,7 @@ patch_fn! {
 
 unsafe extern "system" fn detour_get_file_attributes_w(filename: PCWSTR) -> u32 {
   trace_expr!(INVALID_FILE_ATTRIBUTES, unsafe {
-    let mut virtual_path_res = get_virtual_path_or_wide(filename)?;
+    let mut virtual_path_res = dbg!(get_virtual_path_or_wide(filename))?;
 
     Ok(original_get_file_attributes_w(
       virtual_path_res.as_raw_or_original(),
@@ -77,7 +77,7 @@ unsafe extern "system" fn detour_get_file_attributes_ex_w(
   file_information: *mut c_void,
 ) -> u32 {
   trace_expr!(INVALID_FILE_ATTRIBUTES, unsafe {
-    let mut virtual_path_res = get_virtual_path_or_wide(filename)?;
+    let mut virtual_path_res = dbg!(get_virtual_path_or_wide(filename))?;
 
     Ok(original_get_file_attributes_ex_w(
       virtual_path_res.as_raw_or_original(),

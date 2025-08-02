@@ -55,7 +55,7 @@ pub(crate) unsafe extern "system" fn detour_nt_create_file(
   _10: u32,
 ) -> NTSTATUS {
   trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
-    let path: PathBuf = dbg!(attrs.path())?;
+    let path: PathBuf = attrs.path()?;
     let (attrs_ptr, reroute_guard) = if let Some(virtual_path) = get_virtual_path(&path)? {
       let attrs = attrs.reroute(virtual_path.path)?;
       (&raw const attrs.attrs, Some(attrs))

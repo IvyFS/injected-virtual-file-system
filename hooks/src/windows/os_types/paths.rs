@@ -9,7 +9,9 @@ pub fn strip_nt_prefix(path: &impl AsRef<Path>) -> &Path {
   path.strip_prefix(NT_PATH_PREFIX).unwrap_or(path)
 }
 
-pub fn canonise_relative_current_dir<'a>(given_path: impl Into<Cow<'a, Path>>) -> Result<Cow<'a, Path>, HookError> {
+pub fn canonise_relative_current_dir<'a>(
+  given_path: impl Into<Cow<'a, Path>>,
+) -> Result<Cow<'a, Path>, HookError> {
   let mut given_path = given_path.into();
   if given_path.is_relative() {
     let given_path = Cow::to_mut(&mut given_path);
@@ -17,15 +19,16 @@ pub fn canonise_relative_current_dir<'a>(given_path: impl Into<Cow<'a, Path>>) -
 
     // Swap the contents of these two PathBufs as we want the result to end up in the `given_path: &mut Cow`, but need
     // the current_dir to be joined/pushed onto by the contents of given_path, not the other way around
-    let (out_ref, given_path) = {
+    let (stem, given_path) = {
       std::mem::swap(&mut current_dir, given_path);
       (given_path, current_dir)
     };
-    out_ref.push(given_path);
+    stem.push(given_path);
 
-    out_ref
-      .normalize_lexically()
-      .map_err(std::io::Error::other)?;
+    let canon = stem.normalize_lexically().map_err(std::io::Error::other)?;
+
+    Ok(canon.into())
+  } else {
+    Ok(given_path)
   }
-  Ok(given_path)
 }
