@@ -6,8 +6,10 @@ pub use strum::IntoDiscriminant;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HookConfig {
+  #[serde(rename = "sn")]
+  pub socket_name: String,
   #[serde(rename = "lc")]
-  pub logging_config: HookLoggingConfig,
+  pub logging_config: HookLoggingVariant,
   #[serde(rename = "fs")]
   pub fs_config: VirtualFsConfig,
 }
@@ -22,27 +24,9 @@ impl HookConfig {
   }
 }
 
-#[derive(Debug, Serialize, Deserialize, strum::EnumDiscriminants)]
-#[strum_discriminants(name(HookLoggingVariant), repr(u8), derive(strum::FromRepr))]
-pub enum HookLoggingConfig {
-  Ipc(String),
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, strum::FromRepr)]
+pub enum HookLoggingVariant {
+  Ipc,
   Stderr,
   None,
-}
-
-#[cfg(test)]
-mod test {
-  use strum::IntoDiscriminant;
-
-  use crate::config::hook::{HookLoggingConfig, HookLoggingVariant};
-
-  #[test]
-  fn hook_logging_config_repr_round_trip() {
-    let logging_type = HookLoggingConfig::Ipc(String::new());
-    let repr = logging_type.discriminant() as u8;
-    assert_eq!(
-      HookLoggingVariant::Ipc,
-      HookLoggingVariant::from_repr(repr).unwrap()
-    )
-  }
 }

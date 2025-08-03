@@ -19,7 +19,7 @@ enum Command {
 }
 
 fn main() {
-  std::thread::sleep(std::time::Duration::from_millis(500));
+  // std::thread::sleep(std::time::Duration::from_millis(500));
 
   match Cli::parse_from(dbg!(std::env::args())).subcommand {
     Command::Delete { path } => unsafe {

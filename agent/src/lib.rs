@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use frida_gum::Gum;
 use hooks::Patcher;
-use shared_types::{message::Message, config::hook::HookConfig};
+use shared_types::{config::hook::HookConfig, message::Message};
 
 #[unsafe(no_mangle)]
 unsafe fn injected_function(data: *const std::os::raw::c_char, stay_resident: *mut u32) {
@@ -28,11 +28,10 @@ unsafe fn injected_function(data: *const std::os::raw::c_char, stay_resident: *m
   //   format!("{acc}\n{module}")
   // });
 
-  let patcher = Patcher::init(gum, data.logging_config, data.fs_config);
+  let patcher = Patcher::init(gum, &data.socket_name, data.logging_config, data.fs_config);
   if let Err(err) = patcher.patch_functions() {
     patcher.log(Message::Error(err.to_string()))
   }
 
-  // patcher.log(Message::DebugGetModules(modules));
   patcher.log(Message::FinishedPatching);
 }

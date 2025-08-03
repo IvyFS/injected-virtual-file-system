@@ -2,7 +2,7 @@ use std::{
   error::Error,
   sync::{
     LazyLock,
-    atomic::{AtomicBool, AtomicU8},
+    atomic::{AtomicBool, AtomicUsize},
   },
   time::Duration,
 };
@@ -10,42 +10,45 @@ use std::{
 use crossbeam_queue::SegQueue;
 use interprocess::local_socket::{GenericNamespaced, Stream, ToNsName, traits::Stream as _};
 use shared_types::{
-  config::hook::{HookLoggingConfig, HookLoggingVariant, IntoDiscriminant},
-  message::Message, HookError,
+  HookError,
+  config::hook::{HookLoggingVariant, IntoDiscriminant},
+  message::Message,
 };
 
 pub(crate) use macros::*;
 
 static MSG_QUEUE: LazyLock<SegQueue<Message>> = LazyLock::new(Default::default);
-static LOGGING_VARIANT: AtomicU8 = AtomicU8::new(HookLoggingVariant::None as u8);
+static LOGGING_VARIANT: AtomicUsize = AtomicUsize::new(HookLoggingVariant::None as usize);
 
-pub fn init_logging(config: HookLoggingConfig) {
+pub fn init_logging(socket_name: &str, logging_variant: HookLoggingVariant) {
   LOGGING_VARIANT.store(
-    config.discriminant() as u8,
+    logging_variant as usize,
     std::sync::atomic::Ordering::Relaxed,
   );
-  if let HookLoggingConfig::Ipc(socket_name) = config {
-    let ns_name = socket_name.to_ns_name::<GenericNamespaced>().unwrap();
-    let mut stream = Stream::connect(ns_name).unwrap();
-    std::thread::spawn(move || {
-      loop {
-        if let Some(message) = MSG_QUEUE.pop()
-          && let Err(err) = message.send(&mut stream)
-        {
-          eprintln!("{err:?}");
-        }
+  let ns_name = socket_name.to_ns_name::<GenericNamespaced>().unwrap();
+  let mut stream = Stream::connect(ns_name).unwrap();
+  std::thread::spawn(move || {
+    loop {
+      if let Some(message) = MSG_QUEUE.pop()
+        && let Err(err) = message.send(&mut stream)
+      {
+        eprintln!("{err:?}");
       }
-    });
-  }
+    }
+  });
 }
 
 pub fn log(msg: Message) {
-  let repr = LOGGING_VARIANT.load(std::sync::atomic::Ordering::Relaxed);
-  match HookLoggingVariant::from_repr(repr) {
-    Some(HookLoggingVariant::Ipc) => MSG_QUEUE.push(msg),
-    Some(HookLoggingVariant::Stderr) => eprintln!("{msg}"),
-    _ if let Message::Error(err) = msg => panic!("{err}"),
-    _ => {}
+  if let Message::FinishedPatching = msg {
+    MSG_QUEUE.push(msg);
+  } else {
+    let repr = LOGGING_VARIANT.load(std::sync::atomic::Ordering::Relaxed);
+    match HookLoggingVariant::from_repr(repr) {
+      Some(HookLoggingVariant::Ipc) => MSG_QUEUE.push(msg),
+      Some(HookLoggingVariant::Stderr) => eprintln!("{msg}"),
+      _ if let Message::Error(err) = msg => panic!("{err}"),
+      _ => {}
+    }
   }
 }
 

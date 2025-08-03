@@ -5,8 +5,9 @@
 
 use frida_gum::{Gum, Process};
 use shared_types::{
-  HookError, message::Message,
-  config::{VirtualFsConfig, hook::HookLoggingConfig},
+  HookError,
+  config::{VirtualFsConfig, hook::HookLoggingVariant},
+  message::Message,
 };
 
 pub mod extension_traits;
@@ -42,10 +43,11 @@ pub struct Patcher<'a> {
 impl<'a> Patcher<'a> {
   pub fn init(
     gum: &'a Gum,
-    logging_config: HookLoggingConfig,
+    socket_name: &str,
+    logging_variant: HookLoggingVariant,
     config: VirtualFsConfig,
   ) -> Patcher<'a> {
-    init_logging(logging_config);
+    init_logging(socket_name, logging_variant);
     *MOUNT_POINT.write().unwrap() = config.mount_point;
     *VIRTUAL_ROOT.write().unwrap() = config.virtual_root;
 

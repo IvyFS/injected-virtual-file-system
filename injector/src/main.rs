@@ -12,7 +12,7 @@ use ::tracing::{info, trace};
 use clap::Parser;
 use frida::{Device, Frida, Inject, OutputListener, SpawnOptions};
 use shared_types::config::{
-  hook::{HookConfig, HookLoggingConfig},
+  hook::{HookConfig, HookLoggingVariant},
   injector::{InjectorConfig, TargetConfig},
 };
 
@@ -55,16 +55,14 @@ async fn main() {
     .unwrap_or_else(|| spawn_target(&target_config, config.debug.pipe_target_output, &mut device));
 
   let (ns_name, socket_name) = generate_socket_name();
-  start_message_listener(
-    ns_name,
-    exit_once_patched || !config.debug.enable_ipc_logging,
-  );
+  start_message_listener(ns_name);
 
   let entry_data = HookConfig {
+    socket_name,
     logging_config: match config.debug.enable_ipc_logging {
-      true => HookLoggingConfig::Ipc(socket_name),
-      false if config.debug.print_hook_logs_to_console => HookLoggingConfig::Stderr,
-      false => HookLoggingConfig::None,
+      true => HookLoggingVariant::Ipc,
+      false if config.debug.print_hook_logs_to_console => HookLoggingVariant::Stderr,
+      false => HookLoggingVariant::None,
     },
     fs_config: config.virtual_filesystem,
   }

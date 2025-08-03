@@ -6,7 +6,7 @@ use interprocess::local_socket::{
 };
 use shared_types::message::{CobsAccumulator, FeedResult, Message};
 use tokio::{io::AsyncReadExt, sync::Notify};
-use tracing::debug;
+use tracing::{debug, trace};
 
 pub static PATCH_COMPLETE: Notify = Notify::const_new();
 
@@ -24,22 +24,24 @@ pub fn generate_socket_name() -> (SocketName<'static>, String) {
   )
 }
 
-pub fn start_message_listener(socket_name: SocketName<'_>, exit_once_patched: bool) {
+pub fn start_message_listener(socket_name: SocketName<'_>) {
   let listener = ListenerOptions::new()
     .name(socket_name)
     .create_tokio()
     .expect("Create IPC socket");
 
+  trace!("Starting message listener");
   tokio::spawn(async move {
     loop {
       if let Ok(stream) = listener.accept().await {
-        tokio::spawn(handle_connection(stream, exit_once_patched));
+        trace!("Incoming connection, spawning handler");
+        tokio::spawn(handle_connection(stream));
       }
     }
   });
 }
 
-async fn handle_connection(mut stream: Stream, exit_once_patched: bool) {
+async fn handle_connection(mut stream: Stream) {
   let mut buf = [0u8; 128];
   let mut cobs_buf: CobsAccumulator<1024> = CobsAccumulator::new();
 
@@ -57,10 +59,8 @@ async fn handle_connection(mut stream: Stream, exit_once_patched: bool) {
         FeedResult::Success { data, remaining } => {
           match data {
             Message::FinishedPatching => {
+              trace!(target: "hooked_process.hooks", "Patching complete");
               PATCH_COMPLETE.notify_one();
-              if exit_once_patched {
-                return;
-              }
             }
             message => debug!(target: "hooked_process.hooks", "{message}"),
           }

@@ -2,8 +2,8 @@
 mount_point = "C:\\Users\\wanty\\Documents\\usvfs-rust\\demo\\examples"
 virtual_root = "C:\\Users\\wanty\\Documents\\usvfs-rust\\demo\\target_folder"
 
-[debug]
-tracing_level = "TRACE"
+# [debug]
+# tracing_level = "TRACE"
 
 [target]
 executable = "C:\\Users\\wanty\\Documents\\usvfs-rust\\target\\debug\\examples\\dummy.exe"
