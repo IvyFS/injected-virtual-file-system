@@ -19,8 +19,6 @@ enum Command {
 }
 
 fn main() {
-  // std::thread::sleep(std::time::Duration::from_millis(500));
-
   match Cli::parse_from(dbg!(std::env::args())).subcommand {
     Command::Delete { path } => unsafe {
       let filename = U16CString::from_os_str_truncate(path);

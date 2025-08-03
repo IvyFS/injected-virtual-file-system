@@ -111,8 +111,6 @@ impl TestHarness {
       .spawn()
       .unwrap();
     assert!(child.wait_with_output().unwrap().status.success());
-
-    std::thread::sleep(std::time::Duration::from_secs(1));
   }
 
   pub fn write_config_and_output(&mut self) -> std::process::Output {
@@ -126,8 +124,6 @@ impl TestHarness {
       .output()
       .unwrap();
     assert!(output.status.success());
-
-    std::thread::sleep(std::time::Duration::from_secs(1));
 
     output
   }

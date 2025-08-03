@@ -17,6 +17,9 @@ version = "0.1.0"
 edition = "2024"
 authors = ["AtlanticAccent <iain@laird.org>"]
 
+[profile.test.package.'*']
+opt-level = 3
+
 [workspace.dependencies]
 # Internal
 agent = { path = "agent" }
