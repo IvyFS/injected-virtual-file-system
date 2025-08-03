@@ -1,10 +1,11 @@
 #![feature(normalize_lexically)]
 #![feature(breakpoint)]
 #![feature(maybe_uninit_slice)]
+#![feature(if_let_guard)]
 
 use frida_gum::{Gum, Process};
 use shared_types::{
-  HookError, Message,
+  HookError, message::Message,
   config::{VirtualFsConfig, hook::HookLoggingConfig},
 };
 

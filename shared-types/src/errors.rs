@@ -15,10 +15,8 @@ pub enum HookError {
   },
   #[error("mutex error: {0}")]
   MutexError(#[source] Box<dyn Error>),
-  #[error("encoding error: {0}")]
-  BinEncodeError(#[from] bincode::error::EncodeError),
-  #[error("decoding error: {0}")]
-  BinDecodeError(#[from] bincode::error::DecodeError),
+  #[error("postcard error: {0}")]
+  Postcard(#[from] postcard::Error),
   #[error("json error: {0}")]
   JsonError(#[from] serde_json::error::Error),
 

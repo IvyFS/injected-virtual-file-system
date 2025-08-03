@@ -1,34 +1,28 @@
 use std::{
   ffi::CString,
-  hash::{Hash, Hasher},
-  io::{BufRead, BufReader, Cursor, LineWriter, Write},
+  io::{Cursor, LineWriter, Write},
   path::Path,
   process::exit,
   str::FromStr,
   sync::LazyLock,
-  time::Duration,
+  time::{Duration, Instant},
 };
 
-use ::tracing::{debug, info, trace};
+use ::tracing::{info, trace};
 use clap::Parser;
 use frida::{Device, Frida, Inject, OutputListener, SpawnOptions};
-use interprocess::local_socket::{
-  GenericNamespaced, Listener, ListenerOptions, Name, Stream, ToNsName,
-  traits::{ListenerExt, Stream as _},
+use shared_types::config::{
+  hook::{HookConfig, HookLoggingConfig},
+  injector::{InjectorConfig, TargetConfig},
 };
-use shared_types::{
-  Message,
-  config::{
-    hook::{HookConfig, HookLoggingConfig},
-    injector::{InjectorConfig, TargetConfig},
-  },
-};
-use tokio::sync::Notify;
 
 use config::Cli;
 use tracing::HOOKED_PROCESS_OUTPUT_TARGET;
 
+use crate::ipc::{PATCH_COMPLETE, generate_socket_name, start_message_listener};
+
 mod config;
+mod ipc;
 mod tracing;
 
 #[cfg(not(feature = "testing-no-embed"))]
@@ -38,9 +32,8 @@ static HOOK: &str = env!("CARGO_CDYLIB_FILE_AGENT");
 
 static FRIDA: LazyLock<Frida> = LazyLock::new(|| unsafe { Frida::obtain() });
 
-static NOTIFIER: Notify = Notify::const_new();
-
-fn main() {
+#[tokio::main]
+async fn main() {
   let cli = Cli::parse();
   let config = InjectorConfig::from(cli);
 
@@ -61,38 +54,17 @@ fn main() {
     .pid
     .unwrap_or_else(|| spawn_target(&target_config, config.debug.pipe_target_output, &mut device));
 
-  let runtime = tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .build()
-    .unwrap();
-
-  let (name, ns_name) = if config.debug.enable_ipc_logging {
-    let mut hasher = std::hash::DefaultHasher::new();
-    std::process::id().hash(&mut hasher);
-    let name = format!("{}.sock", hasher.finish());
-    let ns_name = name
-      .as_str()
-      .to_ns_name::<GenericNamespaced>()
-      .unwrap()
-      .into_owned();
-    let listener = ListenerOptions::new()
-      .name(ns_name.borrow())
-      .create_sync()
-      .unwrap();
-
-    runtime.spawn_blocking(move || message_listener(listener, exit_once_patched));
-
-    Some((name, ns_name))
-  } else {
-    None
-  }
-  .unzip();
+  let (ns_name, socket_name) = generate_socket_name();
+  start_message_listener(
+    ns_name,
+    exit_once_patched || !config.debug.enable_ipc_logging,
+  );
 
   let entry_data = HookConfig {
-    logging_config: match name {
-      Some(ipc_name) => HookLoggingConfig::Ipc(ipc_name),
-      None if config.debug.print_hook_logs_to_console => HookLoggingConfig::Stderr,
-      None => HookLoggingConfig::None,
+    logging_config: match config.debug.enable_ipc_logging {
+      true => HookLoggingConfig::Ipc(socket_name),
+      false if config.debug.print_hook_logs_to_console => HookLoggingConfig::Stderr,
+      false => HookLoggingConfig::None,
     },
     fs_config: config.virtual_filesystem,
   }
@@ -110,36 +82,29 @@ fn main() {
 
   trace!("*** Injected, id={id}");
 
-  // TODO: resume only after getting confirmation from hook agent that patching is finished
-
   if target_config.pid.is_none() {
+    PATCH_COMPLETE.notified().await;
+    trace!("*** Finished patching");
     device.resume(pid).unwrap();
   }
 
   if !exit_once_patched {
-    let deadline_check = async move {
-      if let Some(ns_name) = ns_name {
-        deadline_check(pid, ns_name).await;
-      }
-    };
     let ctrlc_signal = tokio::signal::ctrl_c();
-    runtime.block_on(async move {
-      // NOTIFIER.notified().await;
+    let deadline_check = deadline_check(pid);
+    tokio::pin!(deadline_check);
 
-      tokio::pin!(deadline_check);
-
-      tokio::select! {
-        _ = &mut deadline_check => {
-          return;
-        },
-        _ = ctrlc_signal => {
-          info!(target: "injector", "Got Ctrl-C - Killing hooked process");
-          device.kill(pid).unwrap();
-        }
+    tokio::select! {
+      _ = &mut deadline_check => {
+        return;
+      },
+      _ = ctrlc_signal => {
+        info!(target: "injector", "Got Ctrl-C - Killing hooked process");
+        device.kill(pid).unwrap();
       }
-      deadline_check.await;
-    });
+    }
+    deadline_check.await;
   } else {
+    trace!("Exiting");
     exit(0)
   }
 }
@@ -166,72 +131,37 @@ fn spawn_target(target_config: &TargetConfig, pipe_stdio: bool, device: &mut Dev
   device.spawn(&target_config.executable, &options).unwrap()
 }
 
-// TODO: split this into a public module
-fn message_listener(listener: Listener, exit_once_patched: bool) {
-  for stream in listener.incoming().filter_map(Result::ok) {
-    let mut reader = BufReader::new(stream);
-
-    let has_remaining = |reader: &mut BufReader<Stream>| reader.fill_buf().map(|b| !b.is_empty());
-    let mut shutdown_started = false;
-    while let Ok(message) = Message::recv(&mut reader) {
-      match message {
-        Message::ShutdownCountdown(count) => {
-          if !shutdown_started {
-            info!("Hooked process is dead. Shutting down IPC socket.");
-            shutdown_started = true;
-          }
-          info!(
-            "Terminating in {:.1}s",
-            (SHUTDOWN_INTERVAL * (SHUTDOWN_COUNT - count) as u32).as_secs_f32()
-          )
-        }
-        Message::ShutdownFinal => {
-          info!("shutdown");
-          return;
-        }
-        Message::FinishedPatching => {
-          NOTIFIER.notify_one();
-          if exit_once_patched {
-            println!("exiting early");
-            return;
-          }
-        }
-        _ => {
-          debug!(target: "hooked_process.hooks", "{message}")
-        }
-      }
-
-      if !has_remaining(&mut reader).unwrap() {
-        break;
-      }
-    }
-  }
-}
-
 const SHUTDOWN_COUNT: usize = 3;
 const SHUTDOWN_INTERVAL: Duration = Duration::from_secs(1);
 
-async fn deadline_check(pid: u32, ns_name: Name<'_>) {
+async fn deadline_check(pid: u32) {
   use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 
   let pid = Pid::from_u32(pid);
   let process_refresh = ProcessRefreshKind::nothing().without_tasks();
   let mut system =
     System::new_with_specifics(RefreshKind::nothing().with_processes(process_refresh));
+  let mut interval = tokio::time::interval_at(
+    (Instant::now() + Duration::from_secs(1)).into(),
+    shared_types::DEFAULT_HEARTBEAT,
+  );
+
   loop {
-    tokio::time::sleep(shared_types::DEFAULT_HEARTBEAT).await;
+    interval.tick().await;
 
     system.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, process_refresh);
-    if system.process(pid).filter(|proc| !proc.exists()).is_none() {
-      let mut shutdown_sender = Stream::connect(ns_name).unwrap();
+    if system.process(pid).filter(|proc| proc.exists()).is_none() {
       let mut interval = tokio::time::interval(SHUTDOWN_INTERVAL);
+      info!("Hooked process is dead. Shutting down IPC socket.");
       for count in 0..SHUTDOWN_COUNT {
         interval.tick().await;
-        Message::ShutdownCountdown(count)
-          .send(&mut shutdown_sender)
-          .unwrap();
+
+        info!(
+          "Terminating in {:.1}s",
+          (SHUTDOWN_INTERVAL * (SHUTDOWN_COUNT - count) as u32).as_secs_f32()
+        )
       }
-      Message::ShutdownFinal.send(&mut shutdown_sender).unwrap();
+      info!("shutdown");
       return;
     }
   }

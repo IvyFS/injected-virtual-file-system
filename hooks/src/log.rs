@@ -1,51 +1,51 @@
 use std::{
   error::Error,
-  sync::{LazyLock, atomic::AtomicBool},
+  sync::{
+    LazyLock,
+    atomic::{AtomicBool, AtomicU8},
+  },
   time::Duration,
 };
 
 use crossbeam_queue::SegQueue;
 use interprocess::local_socket::{GenericNamespaced, Stream, ToNsName, traits::Stream as _};
-use shared_types::{EncodeError, Message, config::hook::HookLoggingConfig};
+use shared_types::{
+  config::hook::{HookLoggingConfig, HookLoggingVariant, IntoDiscriminant},
+  message::Message, HookError,
+};
 
 pub(crate) use macros::*;
 
 static MSG_QUEUE: LazyLock<SegQueue<Message>> = LazyLock::new(Default::default);
-static LOGGING_ENABLED: AtomicBool = AtomicBool::new(true);
-static LOG_STDERR: AtomicBool = AtomicBool::new(false);
+static LOGGING_VARIANT: AtomicU8 = AtomicU8::new(HookLoggingVariant::None as u8);
 
 pub fn init_logging(config: HookLoggingConfig) {
-  match config {
-    HookLoggingConfig::Ipc(socket_name) => {
-      let ns_name = socket_name.to_ns_name::<GenericNamespaced>().unwrap();
-      let mut stream = Stream::connect(ns_name).unwrap();
-      std::thread::spawn(move || {
-        loop {
-          if let Some(message) = MSG_QUEUE.pop()
-            && let Err(err) = message.send(&mut stream)
-          {
-            eprintln!("{err:?}");
-            if matches!(err, EncodeError::Io { .. } | EncodeError::UnexpectedEnd) {
-              return;
-            }
-          }
+  LOGGING_VARIANT.store(
+    config.discriminant() as u8,
+    std::sync::atomic::Ordering::Relaxed,
+  );
+  if let HookLoggingConfig::Ipc(socket_name) = config {
+    let ns_name = socket_name.to_ns_name::<GenericNamespaced>().unwrap();
+    let mut stream = Stream::connect(ns_name).unwrap();
+    std::thread::spawn(move || {
+      loop {
+        if let Some(message) = MSG_QUEUE.pop()
+          && let Err(err) = message.send(&mut stream)
+        {
+          eprintln!("{err:?}");
         }
-      });
-    }
-    HookLoggingConfig::Stderr => {
-      LOG_STDERR.store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-    HookLoggingConfig::None => LOGGING_ENABLED.store(false, std::sync::atomic::Ordering::Relaxed),
+      }
+    });
   }
 }
 
 pub fn log(msg: Message) {
-  if LOG_STDERR.load(std::sync::atomic::Ordering::Relaxed) {
-    eprintln!("{msg}")
-  } else if LOGGING_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
-    MSG_QUEUE.push(msg);
-  } else if let Message::Error(err) = msg {
-    panic!("{err}")
+  let repr = LOGGING_VARIANT.load(std::sync::atomic::Ordering::Relaxed);
+  match HookLoggingVariant::from_repr(repr) {
+    Some(HookLoggingVariant::Ipc) => MSG_QUEUE.push(msg),
+    Some(HookLoggingVariant::Stderr) => eprintln!("{msg}"),
+    _ if let Message::Error(err) = msg => panic!("{err}"),
+    _ => {}
   }
 }
 

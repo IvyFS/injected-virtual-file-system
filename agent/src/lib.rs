@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use frida_gum::Gum;
 use hooks::Patcher;
-use shared_types::{Message, config::hook::HookConfig};
+use shared_types::{message::Message, config::hook::HookConfig};
 
 #[unsafe(no_mangle)]
 unsafe fn injected_function(data: *const std::os::raw::c_char, stay_resident: *mut u32) {
