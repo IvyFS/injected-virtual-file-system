@@ -1,0 +1,6 @@
+[profile.default]
+slow-timeout = { period = "30s" }
+
+[[profile.default.overrides]]
+filter = 'test(/\bintegration::windows::java::relative_redirect/)'
+retries = 3

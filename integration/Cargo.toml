@@ -9,15 +9,16 @@ authors.workspace = true
 [[test]]
 name = "windows"
 path = "tests/windows/main.rs"
+required-features = ["injector/testing-no-embed"]
 harness = false
 
 [dependencies]
-clap = { workspace = true, features = ["derive"] }
-
-[dev-dependencies]
 injector = { path = "../injector", features = [
   "testing-no-embed",
 ], artifact = "bin" }
+clap = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
 proc-macros = { workspace = true }
 
 tempdir = "0.3.7"

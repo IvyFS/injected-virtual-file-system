@@ -63,6 +63,7 @@ impl From<Cli> for InjectorConfig {
           ..Default::default()
         },
         exit_once_patched: true,
+        instant_shutdown: true,
       },
       (_, Some(config_path)) => InjectorConfig::parse_or_panic(config_path),
       _ => unreachable!(),

@@ -19,7 +19,10 @@ use shared_types::config::{
 use config::Cli;
 use tracing::HOOKED_PROCESS_OUTPUT_TARGET;
 
-use crate::ipc::{PATCH_COMPLETE, generate_socket_name, start_message_listener};
+use crate::{
+  ipc::{PATCH_COMPLETE, generate_socket_name, start_message_listener},
+  tracing::INJECTOR_PROFILING_TARGET,
+};
 
 mod config;
 mod ipc;
@@ -69,6 +72,8 @@ async fn main() {
   .encode()
   .unwrap();
 
+  let patch_start = std::time::Instant::now();
+  trace!(target: INJECTOR_PROFILING_TARGET, patch_start = format!("{patch_start:#?}"));
   #[cfg(not(feature = "testing-no-embed"))]
   let id = device
     .inject_library_blob_sync(pid, HOOK, "injected_function", entry_data)
@@ -83,12 +88,15 @@ async fn main() {
   if target_config.pid.is_none() {
     PATCH_COMPLETE.notified().await;
     trace!("*** Finished patching");
+    let patch_end = std::time::Instant::now();
+    let patch_total = patch_end - patch_start;
+    trace!(target: INJECTOR_PROFILING_TARGET, patch_end = format!("{patch_end:#?}"), patch_total = format!("{patch_total:#?}"));
     device.resume(pid).unwrap();
   }
 
   if !exit_once_patched {
     let ctrlc_signal = tokio::signal::ctrl_c();
-    let deadline_check = deadline_check(pid);
+    let deadline_check = deadline_check(pid, config.instant_shutdown);
     tokio::pin!(deadline_check);
 
     tokio::select! {
@@ -132,7 +140,7 @@ fn spawn_target(target_config: &TargetConfig, pipe_stdio: bool, device: &mut Dev
 const SHUTDOWN_COUNT: usize = 3;
 const SHUTDOWN_INTERVAL: Duration = Duration::from_secs(1);
 
-async fn deadline_check(pid: u32) {
+async fn deadline_check(pid: u32, instant_shutdown: bool) {
   use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 
   let pid = Pid::from_u32(pid);
@@ -149,15 +157,17 @@ async fn deadline_check(pid: u32) {
 
     system.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, process_refresh);
     if system.process(pid).filter(|proc| proc.exists()).is_none() {
-      let mut interval = tokio::time::interval(SHUTDOWN_INTERVAL);
-      info!("Hooked process is dead. Shutting down IPC socket.");
-      for count in 0..SHUTDOWN_COUNT {
-        interval.tick().await;
+      if !instant_shutdown {
+        let mut interval = tokio::time::interval(SHUTDOWN_INTERVAL);
+        info!("Hooked process is dead. Shutting down IPC socket.");
+        for count in 0..SHUTDOWN_COUNT {
+          interval.tick().await;
 
-        info!(
-          "Terminating in {:.1}s",
-          (SHUTDOWN_INTERVAL * (SHUTDOWN_COUNT - count) as u32).as_secs_f32()
-        )
+          info!(
+            "Terminating in {:.1}s",
+            (SHUTDOWN_INTERVAL * (SHUTDOWN_COUNT - count) as u32).as_secs_f32()
+          )
+        }
       }
       info!("shutdown");
       return;

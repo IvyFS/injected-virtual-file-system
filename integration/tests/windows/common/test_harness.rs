@@ -44,6 +44,7 @@ impl TestHarness {
       },
       debug: DebugConfig {
         print_hook_logs_to_console: true,
+        tracing_level: "OFF".parse().unwrap(),
         ..DebugConfig::default()
       },
       target: TargetConfig {
@@ -53,6 +54,7 @@ impl TestHarness {
         pid: None,
       },
       exit_once_patched: false,
+      instant_shutdown: true,
     };
 
     TestHarness {

@@ -13,6 +13,8 @@ pub struct InjectorConfig {
   pub target: TargetConfig,
   #[serde(default)]
   pub exit_once_patched: bool,
+  #[serde(default)]
+  pub instant_shutdown: bool,
 }
 
 impl InjectorConfig {
@@ -45,6 +47,8 @@ pub struct DebugConfig {
   pub print_hook_logs_to_console: bool,
   #[serde(default = "_true")]
   pub pipe_target_output: bool,
+  #[serde(default)]
+  pub profiling: bool,
 }
 
 impl Default for DebugConfig {
@@ -54,7 +58,8 @@ impl Default for DebugConfig {
       tracing_level: LevelFilter::INFO,
       suppress_target_output: false,
       print_hook_logs_to_console: false,
-      pipe_target_output: false
+      pipe_target_output: false,
+      profiling: false,
     }
   }
 }

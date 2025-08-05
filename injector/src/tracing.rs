@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 use shared_types::config::injector::DebugConfig;
 
 pub(crate) const HOOKED_PROCESS_OUTPUT_TARGET: &str = "hooked_process.stdout";
+pub(crate) const INJECTOR_PROFILING_TARGET: &str = "injector.profiling";
 
 #[must_use]
 pub(crate) fn init_tracing(
@@ -27,8 +28,11 @@ pub(crate) fn init_tracing(
     .from_env_lossy();
 
   let suppress_target_output = debug_config.suppress_target_output;
-  let dynamic_filter = FilterFn::new(move |metadata| {
-    !suppress_target_output || metadata.target() != HOOKED_PROCESS_OUTPUT_TARGET
+  let enable_profiling = debug_config.profiling;
+  let dynamic_filter = FilterFn::new(move |metadata| match metadata.target() {
+    HOOKED_PROCESS_OUTPUT_TARGET => !suppress_target_output,
+    INJECTOR_PROFILING_TARGET => enable_profiling,
+    _ => true,
   });
 
   let stdout_layer = tracing_subscriber::fmt::layer()
