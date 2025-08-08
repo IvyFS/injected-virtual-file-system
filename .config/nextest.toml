@@ -1,6 +1,13 @@
 [profile.default]
 slow-timeout = { period = "30s" }
 
+[test-groups]
+serial = { max-threads = 1 }
+
 [[profile.default.overrides]]
-filter = 'test(/\bintegration::windows::java::relative_redirect/)'
+filter = 'test(java::)'
+test-group = 'serial'
+
+[[profile.default.overrides]]
+filter = 'test(integration::windows::java::relative_redirect)'
 retries = 3

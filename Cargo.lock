@@ -872,6 +872,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "injector",
+ "integration-shared",
  "libtest-mimic",
  "linkme",
  "proc-macros",
@@ -881,6 +882,18 @@ dependencies = [
  "widestring",
  "windows",
  "windows-strings",
+]
+
+[[package]]
+name = "integration-shared"
+version = "0.1.0"
+dependencies = [
+ "injector",
+ "serde",
+ "serde_json",
+ "shared-types",
+ "tempdir",
+ "toml",
 ]
 
 [[package]]

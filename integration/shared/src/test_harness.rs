@@ -11,7 +11,7 @@ use shared_types::config::{
 };
 use tempdir::TempDir;
 
-use crate::common::INJECTOR;
+use crate::INJECTOR;
 
 static HARNESS_LOCK: Mutex<()> = Mutex::new(());
 
@@ -20,10 +20,12 @@ pub struct TestHarness {
   pub mount_target: PathBuf,
   pub virtual_dir: TempDir,
   pub virtual_target: PathBuf,
+  pub extra_dir: TempDir,
 
-  config_dir: TempDir,
+  pub config_dir: TempDir,
   pub config_path: PathBuf,
   pub config: InjectorConfig,
+  pub output_file: PathBuf,
 
   _global_test_lock: Option<MutexGuard<'static, ()>>,
   serial: bool,
@@ -62,6 +64,9 @@ impl TestHarness {
       mount_target,
       virtual_dir,
       virtual_target,
+      extra_dir: TempDir::new("extra").unwrap(),
+
+      output_file: config_dir.path().join("output.json"),
       config_path: config_dir.path().join("config.toml"),
       config_dir,
       config,
@@ -71,13 +76,13 @@ impl TestHarness {
     }
   }
 
-  pub fn with_args(mut self, args: impl IntoIterator<Item = String>) -> Self {
+  pub fn with_args<T: ToString>(mut self, args: impl IntoIterator<Item = T>) -> Self {
     self.set_args(args);
     self
   }
 
-  pub fn set_args(&mut self, args: impl IntoIterator<Item = String>) -> &mut Self {
-    self.config.target.args = args.into_iter().collect();
+  pub fn set_args<T: ToString>(&mut self, args: impl IntoIterator<Item = T>) -> &mut Self {
+    self.config.target.args = args.into_iter().map(|arg| arg.to_string()).collect();
     self
   }
 
@@ -86,8 +91,12 @@ impl TestHarness {
   }
 
   pub fn with_working_dir(mut self, working_dir: impl AsRef<Path>) -> Self {
-    self.config.target.working_dir = Some(working_dir.as_ref().to_path_buf());
+    self.set_working_dir(working_dir);
     self
+  }
+
+  pub fn set_working_dir(&mut self, working_dir: impl AsRef<Path>) {
+    self.config.target.working_dir = Some(working_dir.as_ref().to_path_buf());
   }
 
   pub fn expected_name(mut self, file_name: impl AsRef<OsStr>) -> Self {

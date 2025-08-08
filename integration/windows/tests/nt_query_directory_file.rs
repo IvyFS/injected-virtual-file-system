@@ -1,3 +1,4 @@
+use integration_shared::{inject_self, workspace_root};
 use proc_macros::ctest;
 use win_api::{
   Wdk::{
@@ -12,11 +13,7 @@ use win_api::{
   },
 };
 
-use crate::{
-  common::{inject_self, workspace_root},
-  nt_create::nt_create_open_existing_dir,
-  nt_open::nt_open_existing_dir,
-};
+use crate::{nt_create::nt_create_open_existing_dir, nt_open::nt_open_existing_dir};
 
 pub fn query_directory_file_all(handle: HANDLE) -> Vec<widestring::U16CString> {
   const BUF_LEN: usize = 1024;
@@ -59,7 +56,7 @@ pub fn query_directory_file_all(handle: HANDLE) -> Vec<widestring::U16CString> {
   res
 }
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn nt_create_query() {
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");
@@ -84,7 +81,7 @@ fn nt_create_query() {
   assert_eq!(found.len(), 4)
 }
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn nt_open_query() {
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");

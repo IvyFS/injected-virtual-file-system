@@ -3,7 +3,7 @@ use std::{path::Path, process::Command};
 use proc_macros::ctest;
 use tempdir::TempDir;
 
-use crate::common::{TestHarness, workspace_root};
+use integration_shared::{TestHarness, workspace_root};
 
 const WORKSPACE_ROOT: &str = env!("CARGO_WORKSPACE_DIR");
 const INJECTOR: &str = env!("CARGO_BIN_FILE_INJECTOR");
@@ -58,7 +58,7 @@ fn sanity_test() {
   assert!(output.status.success())
 }
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn absolute_redirect() {
   clean_and_build();
 
@@ -73,7 +73,7 @@ fn absolute_redirect() {
   assert_eq!(found_files.len(), 1)
 }
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn relative_redirect() {
   clean_and_build();
 

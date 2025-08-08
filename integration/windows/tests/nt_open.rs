@@ -3,6 +3,7 @@ use std::{
   ptr::{null, null_mut},
 };
 
+use integration_shared::{inject_self, workspace_root};
 use proc_macros::ctest;
 use win_api::{
   Wdk::{
@@ -18,9 +19,9 @@ use win_api::{
 };
 use windows_strings::PCWSTR;
 
-use crate::common::{inject_self, path_from_handle, workspace_root};
+use crate::common::path_from_handle;
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn test_dir() {
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");

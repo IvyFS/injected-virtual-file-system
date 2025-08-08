@@ -1,10 +1,10 @@
 use proc_macros::ctest;
 
-use crate::common::TestHarness;
+use integration_shared::TestHarness;
 
-const FOLDER_EDITOR: &str = env!("CARGO_BIN_EXE_DIR_EDIT");
+const FOLDER_EDITOR: &str = env!("CARGO_BIN_FILE_INTEGRATION_SHARED_dir_edit");
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn create_directory_w() {
   let mut test_harness = TestHarness::new(FOLDER_EDITOR).parallel();
 
@@ -23,7 +23,7 @@ fn create_directory_w() {
   assert!(test_harness.virtual_target.exists());
 }
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn remove_directory_w() {
   let mut test_harness = TestHarness::new(FOLDER_EDITOR).parallel();
 

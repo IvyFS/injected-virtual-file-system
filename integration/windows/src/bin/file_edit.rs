@@ -1,17 +1,11 @@
 use std::ffi::CString;
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use widestring::U16CString;
 use win_api::Win32::Storage::FileSystem::{DeleteFileW, MoveFileA, MoveFileW};
 use windows_strings::{PCSTR, PCWSTR};
 
 #[derive(Debug, Parser)]
-struct Cli {
-  #[command(subcommand)]
-  subcommand: Command,
-}
-
-#[derive(Debug, Subcommand)]
 enum Command {
   Delete { path: String },
   MoveFileA { source: String, dest: String },
@@ -19,7 +13,7 @@ enum Command {
 }
 
 fn main() {
-  match Cli::parse_from(dbg!(std::env::args())).subcommand {
+  match Command::parse() {
     Command::Delete { path } => unsafe {
       let filename = U16CString::from_os_str_truncate(path);
       DeleteFileW(PCWSTR::from_raw(filename.as_ptr())).unwrap();

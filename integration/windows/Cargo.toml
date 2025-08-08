@@ -5,20 +5,22 @@ name = "integration"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+autotests = false
 
 [[test]]
 name = "windows"
-path = "tests/windows/main.rs"
+path = "tests/main.rs"
 required-features = ["injector/testing-no-embed"]
 harness = false
 
 [dependencies]
-injector = { path = "../injector", features = [
-  "testing-no-embed",
-], artifact = "bin" }
 clap = { workspace = true, features = ["derive"] }
+integration-shared = { path = "../shared", artifact = "bin", lib = true }
 
 [dev-dependencies]
+injector = { path = "../../injector", features = [
+  "testing-no-embed",
+], artifact = "bin" }
 proc-macros = { workspace = true }
 
 tempdir = "0.3.7"

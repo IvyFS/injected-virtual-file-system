@@ -1,0 +1,23 @@
+#:schema ../json_schemas/cargo_nightly.json
+
+[package]
+name = "integration-shared"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+
+[dependencies]
+# Internal
+injector = { path = "../../injector", features = [
+  "testing-no-embed",
+], artifact = "bin" }
+shared-types = { workspace = true }
+
+# External
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempdir = "0.3.7"
+toml = { workspace = true }
+
+[dev-dependencies]

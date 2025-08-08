@@ -2,11 +2,11 @@ use std::io::Write;
 
 use proc_macros::ctest;
 
-use crate::common::TestHarness;
+use integration_shared::TestHarness;
 
 const FILE_EDIT: &str = env!("CARGO_BIN_EXE_FILE_EDIT");
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn delete_file() {
   let mut test_harness = TestHarness::new(FILE_EDIT).parallel();
 
@@ -28,7 +28,7 @@ fn delete_file() {
   assert!(!test_harness.virtual_target.exists());
 }
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn move_file_ansi() {
   let mut test_harness = TestHarness::new(FILE_EDIT).parallel();
 
@@ -56,7 +56,7 @@ fn move_file_ansi() {
   assert!(virtual_dest.exists());
 }
 
-#[ctest(super::TESTS)]
+#[ctest(crate::TESTS)]
 fn move_file_wide() {
   let mut test_harness = TestHarness::new(FILE_EDIT).parallel();
 

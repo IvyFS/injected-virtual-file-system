@@ -1,6 +1,4 @@
 fn main() {
-  std::thread::sleep(std::time::Duration::from_millis(500));
-
   let mut args = std::env::args().skip(1);
   let path = args.next().unwrap();
   let delete = args.next().as_deref() == Some("delete");
