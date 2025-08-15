@@ -13,7 +13,7 @@ use win_types::{PCSTR, PCWSTR};
 
 use crate::{
   virtual_paths::{MOUNT_POINT, VIRTUAL_ROOT},
-  windows::os_types::paths::{canonise_relative_current_dir, strip_nt_prefix},
+  windows::helpers::paths::{canonise_relative_current_dir, strip_nt_prefix},
 };
 
 #[derive(Debug)]

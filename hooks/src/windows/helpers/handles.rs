@@ -22,7 +22,7 @@ use win_api::{
 };
 
 use crate::{
-  extension_traits::DashExt, raw_ptr::UnsafeRefCast, windows::os_types::paths::strip_nt_prefix,
+  extension_traits::DashExt, raw_ptr::UnsafeRefCast, windows::helpers::paths::strip_nt_prefix,
 };
 
 #[allow(dead_code)]
@@ -201,7 +201,7 @@ pub unsafe fn path_from_handle(handle: &HANDLE) -> Result<String, HookError> {
 }
 
 macro_rules! into_handle {
-  () => {impl Into<crate::windows::os_types::handles::Handle>};
+  () => {impl Into<crate::windows::helpers::handles::Handle>};
 }
 
 pub(crate) use into_handle;

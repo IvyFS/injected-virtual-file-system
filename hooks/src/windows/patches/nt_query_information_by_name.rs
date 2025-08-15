@@ -12,7 +12,7 @@ use win_api::{
 use crate::{
   log::trace_expr,
   virtual_paths::windows::get_virtual_path,
-  windows::os_types::{handles::ObjectAttributesExt, object_attributes::RawObjectAttrsExt},
+  windows::helpers::{handles::ObjectAttributesExt, object_attributes::RawObjectAttrsExt},
 };
 
 patch_fn! {

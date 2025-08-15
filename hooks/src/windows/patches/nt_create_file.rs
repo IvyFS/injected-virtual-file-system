@@ -17,7 +17,7 @@ pub use win_api::{
 use crate::{
   log::{logfmt_dbg, trace_expr},
   virtual_paths::windows::get_virtual_path,
-  windows::os_types::{
+  windows::helpers::{
     handles::{HANDLE_MAP, ObjectAttributesExt},
     object_attributes::RawObjectAttrsExt,
   },

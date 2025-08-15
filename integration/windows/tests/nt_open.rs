@@ -23,6 +23,8 @@ use crate::common::path_from_handle;
 
 #[ctest(crate::TESTS)]
 fn test_dir() {
+
+
   let workspace_root = workspace_root();
   let virtual_root = workspace_root.join("integration\\target_folder");
   let mount_point = workspace_root.join("integration\\examples");

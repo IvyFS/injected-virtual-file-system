@@ -17,7 +17,7 @@ use crate::{
   log::trace_expr,
   virtual_paths::windows::get_virtual_path,
   windows::{
-    os_types::handles::{HANDLE_MAP, Handle, into_handle, std_open_dir_handle_unhooked},
+    helpers::handles::{HANDLE_MAP, Handle, into_handle, std_open_dir_handle_unhooked},
     patches::nt_close_detour,
   },
 };

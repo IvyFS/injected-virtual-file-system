@@ -3,7 +3,7 @@ use std::path::Path;
 use shared_types::HookError;
 use win_api::{Wdk::Foundation::OBJECT_ATTRIBUTES, Win32::Foundation::HANDLE};
 
-use crate::{raw_ptr::UnsafeRefCast, windows::os_types::unicode_string::OwnedUnicodeString};
+use crate::{raw_ptr::UnsafeRefCast, windows::helpers::unicode_string::OwnedUnicodeString};
 
 #[derive(Debug)]
 pub struct ReroutedObjectAttrs {

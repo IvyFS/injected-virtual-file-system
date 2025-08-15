@@ -7,7 +7,7 @@ use win_types::{BOOL, PCSTR, PCWSTR};
 use crate::{
   log::trace_expr,
   virtual_paths::windows::{VirtualPathOption, get_virtual_path_or_ansi, get_virtual_path_or_wide},
-  windows::os_types::WIN_FALSE,
+  windows::helpers::WIN_FALSE,
 };
 
 patch_fn!(

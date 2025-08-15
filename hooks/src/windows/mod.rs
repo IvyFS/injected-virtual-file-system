@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::LazyLock};
 #[cfg(false)]
 pub(crate) mod fs;
 
-pub(crate) mod os_types;
+pub(crate) mod helpers;
 pub(crate) mod patches;
 
 use patches::*;
