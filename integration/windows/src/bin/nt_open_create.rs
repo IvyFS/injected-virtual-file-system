@@ -16,8 +16,7 @@ use win_api::{
   Win32::{
     Foundation::{HANDLE, OBJECT_ATTRIBUTE_FLAGS, UNICODE_STRING},
     Storage::FileSystem::{
-      DELETE, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_READ_DATA,
-      FILE_SHARE_MODE, FILE_WRITE_DATA,
+      DELETE, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_LIST_DIRECTORY, FILE_SHARE_MODE,
     },
     System::IO::IO_STATUS_BLOCK,
   },
@@ -145,7 +144,7 @@ pub(crate) fn nt_create(path: &Path, is_dir: bool, open_options: OpenOptions) ->
     (FILE_LIST_DIRECTORY, FILE_DIRECTORY_FILE)
   } else {
     (
-      FILE_GENERIC_READ & FILE_GENERIC_WRITE & DELETE,
+      FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE,
       FILE_NON_DIRECTORY_FILE,
     )
   };

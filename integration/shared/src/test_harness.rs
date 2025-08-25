@@ -1,5 +1,4 @@
 use std::{
-  ffi::OsStr,
   path::{Path, PathBuf},
   process::Command,
   sync::{Mutex, MutexGuard},
@@ -17,9 +16,10 @@ static HARNESS_LOCK: Mutex<()> = Mutex::new(());
 
 pub struct TestHarness {
   pub mount_dir: TempDir,
-  pub mount_target: PathBuf,
+  mount_expected: PathBuf,
   pub virtual_dir: TempDir,
-  pub virtual_target: PathBuf,
+  virtual_expected: PathBuf,
+  pub expected: PathBuf,
   pub extra_dir: TempDir,
 
   pub config_dir: TempDir,
@@ -33,10 +33,11 @@ pub struct TestHarness {
 
 impl TestHarness {
   pub fn new(executable: impl ToString) -> TestHarness {
+    let expected = Path::new("expected").to_path_buf();
     let mount_dir = TempDir::new("mount_dir").unwrap();
-    let mount_target = mount_dir.path().join("expected");
+    let mount_target = mount_dir.path().join(&expected);
     let virtual_dir = TempDir::new("virtual_dir").unwrap();
-    let virtual_target = virtual_dir.path().join("expected");
+    let virtual_target = virtual_dir.path().join(&expected);
     let config_dir = TempDir::new("config").unwrap();
 
     let config = InjectorConfig {
@@ -61,9 +62,10 @@ impl TestHarness {
 
     TestHarness {
       mount_dir,
-      mount_target,
+      mount_expected: mount_target,
       virtual_dir,
-      virtual_target,
+      virtual_expected: virtual_target,
+      expected: expected.to_path_buf(),
       extra_dir: TempDir::new("extra").unwrap(),
 
       output_file: config_dir.path().join("output.json"),
@@ -99,10 +101,19 @@ impl TestHarness {
     self.config.target.working_dir = Some(working_dir.as_ref().to_path_buf());
   }
 
-  pub fn expected_name(mut self, file_name: impl AsRef<OsStr>) -> Self {
-    self.mount_target.set_file_name(&file_name);
-    self.virtual_target.set_file_name(file_name);
+  pub fn expected_name(mut self, expected: impl AsRef<Path>) -> Self {
+    self.expected = expected.as_ref().to_path_buf();
+    self.mount_expected = self.mount_dir.path().join(&self.expected);
+    self.virtual_expected = self.virtual_dir.path().join(&self.expected);
     self
+  }
+
+  pub fn mount_expected(&self) -> &Path {
+    &self.mount_expected
+  }
+
+  pub fn virtual_expected(&self) -> &Path {
+    &self.virtual_expected
   }
 
   pub fn parallel(mut self) -> Self {

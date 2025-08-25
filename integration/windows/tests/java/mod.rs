@@ -85,10 +85,10 @@ fn relative_redirect() {
     .with_working_dir(temp_working_dir.path())
     .expected_name("virtual_mod");
 
-  std::fs::create_dir(&test_harness.virtual_target).unwrap();
+  std::fs::create_dir(test_harness.virtual_expected()).unwrap();
   std::fs::copy(
     workspace_root().join("integration/target_folder/virtual_mod/mod_info.json"),
-    test_harness.virtual_target.join("mod_info.json"),
+    test_harness.virtual_expected().join("mod_info.json"),
   )
   .unwrap();
 
@@ -118,7 +118,7 @@ fn relative_redirect() {
     .collect();
 
   assert_eq!(
-    test_harness.mount_target,
+    test_harness.mount_expected(),
     test_harness
       .mount_dir
       .path()

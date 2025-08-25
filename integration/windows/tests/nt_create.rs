@@ -1,9 +1,6 @@
-use std::{
-  os::windows::{fs::OpenOptionsExt, io::IntoRawHandle},
-  path::Path,
-};
+use std::path::Path;
 
-use integration_shared::{inject_self, workspace_root};
+use integration_shared::TestHarness;
 use proc_macros::ctest;
 use win_api::{
   Wdk::{
@@ -13,50 +10,39 @@ use win_api::{
   },
   Win32::{
     Foundation::{HANDLE, UNICODE_STRING},
-    Storage::FileSystem::{FILE_FLAG_BACKUP_SEMANTICS, FILE_LIST_DIRECTORY, FILE_SHARE_MODE},
+    Storage::FileSystem::{FILE_LIST_DIRECTORY, FILE_SHARE_MODE},
   },
 };
 use windows_strings::PCWSTR;
 
-use crate::common::path_from_handle;
+const NT_OPEN_CREATE_BIN: &str = env!("CARGO_BIN_EXE_NT_OPEN_CREATE");
 
 #[ctest(crate::TESTS)]
-fn create_open_dir_std() {
-  let workspace_root = workspace_root();
-  let virtual_root = workspace_root.join("integration\\target_folder");
-  let mount_point = workspace_root.join("integration\\examples");
+fn open_existing_dir_in_virtual_fs() {
+  let mut test_harness = TestHarness::new(NT_OPEN_CREATE_BIN).parallel();
 
-  inject_self(&virtual_root, &mount_point);
+  std::fs::create_dir(&test_harness.virtual_expected()).unwrap();
 
-  let handle = std::fs::File::options()
-    .read(true)
-    .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
-    .open(&mount_point)
-    .unwrap()
-    .into_raw_handle();
+  test_harness.set_args([
+    "--is-dir".to_owned(),
+    test_harness.mount_expected().display().to_string(),
+  ]);
 
-  assert_eq!(
-    "\\\\?\\C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\target_folder",
-    unsafe { path_from_handle(HANDLE(handle)) }
-  );
+  assert!(test_harness.write_config_and_output().status.success())
 }
 
 #[ctest(crate::TESTS)]
-fn create_open_dir_manual() {
-  let workspace_root = workspace_root();
-  let virtual_root = workspace_root.join("integration\\target_folder");
-  let mount_point = workspace_root.join("integration\\examples");
+fn mkdir_creates_dir_in_virtual_fs() {
+  let mut test_harness = TestHarness::new(NT_OPEN_CREATE_BIN).parallel();
 
-  inject_self(&virtual_root, &mount_point);
+  std::fs::create_dir(&test_harness.virtual_expected()).unwrap();
 
-  unsafe {
-    let filehandle = nt_create_open_existing_dir(&mount_point);
+  test_harness.set_args([
+    "--is-dir".to_owned(),
+    test_harness.virtual_expected().display().to_string(),
+  ]);
 
-    assert_eq!(
-      "\\\\?\\C:\\Users\\wanty\\Documents\\usvfs-rust\\integration\\target_folder",
-      path_from_handle(filehandle)
-    );
-  }
+  assert!(test_harness.write_config_and_output().status.success())
 }
 
 pub(crate) fn nt_create_open_existing_dir(path: &Path) -> HANDLE {
