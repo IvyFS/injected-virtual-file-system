@@ -12,6 +12,7 @@ use win_api::Win32::{
 use windows_strings::PCWSTR;
 
 #[derive(Debug, Parser)]
+#[clap(disable_help_flag = true, disable_help_subcommand = true)]
 struct Args {
   path: PathBuf,
   output: PathBuf,

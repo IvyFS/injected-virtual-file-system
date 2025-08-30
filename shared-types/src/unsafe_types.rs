@@ -1,9 +1,9 @@
 use std::cell::UnsafeCell;
 
 #[repr(transparent)]
-pub struct UnsafeSyncCell<T: Sync>(UnsafeCell<T>);
+pub struct SyncUnsafeCell<T: Sync>(UnsafeCell<T>);
 
-impl<T: Sync> UnsafeSyncCell<T> {
+impl<T: Sync> SyncUnsafeCell<T> {
   pub const fn new(value: T) -> Self {
     Self(UnsafeCell::new(value))
   }
@@ -13,4 +13,9 @@ impl<T: Sync> UnsafeSyncCell<T> {
   }
 }
 
-unsafe impl<T: Sync> Sync for UnsafeSyncCell<T> {}
+unsafe impl<T: Sync> Sync for SyncUnsafeCell<T> {}
+
+#[repr(transparent)]
+pub struct SendPtr(pub *mut std::ffi::c_void);
+
+unsafe impl Send for SendPtr {}

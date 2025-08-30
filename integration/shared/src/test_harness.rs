@@ -56,8 +56,8 @@ impl TestHarness {
         args: Vec::new(),
         pid: None,
       },
-      exit_once_patched: false,
       instant_shutdown: true,
+      return_target_exit_code: true,
     };
 
     TestHarness {
@@ -74,7 +74,7 @@ impl TestHarness {
       config,
 
       _global_test_lock: None,
-      serial: true,
+      serial: false,
     }
   }
 
@@ -112,12 +112,25 @@ impl TestHarness {
     &self.mount_expected
   }
 
+  pub fn mount_expected_str(&self) -> String {
+    self.mount_expected.display().to_string()
+  }
+
   pub fn virtual_expected(&self) -> &Path {
     &self.virtual_expected
   }
 
+  pub fn virtual_expected_str(&self) -> String {
+    self.virtual_expected.display().to_string()
+  }
+
   pub fn parallel(mut self) -> Self {
     self.serial = false;
+    self
+  }
+
+  pub fn serial(mut self) -> Self {
+    self.serial = true;
     self
   }
 
@@ -141,12 +154,9 @@ impl TestHarness {
   }
 
   pub fn spawn_output(&mut self) -> std::process::Output {
-    let output = Command::new(INJECTOR)
+    Command::new(INJECTOR)
       .arg(self.config_path.as_os_str())
       .output()
-      .unwrap();
-    assert!(output.status.success());
-
-    output
+      .unwrap()
   }
 }

@@ -24,6 +24,11 @@ use win_api::{
 use windows_strings::PCWSTR;
 
 #[derive(Debug, Parser)]
+#[clap(
+  disable_help_flag = true,
+  disable_help_subcommand = true,
+  subcommand_required = true
+)]
 struct Args {
   #[command(subcommand)]
   variant: Variant,

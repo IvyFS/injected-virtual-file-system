@@ -6,6 +6,7 @@ use win_api::Win32::Storage::FileSystem::{DeleteFileW, MoveFileA, MoveFileW};
 use windows_strings::{PCSTR, PCWSTR};
 
 #[derive(Debug, Parser)]
+#[clap(disable_help_flag = true, disable_help_subcommand = true)]
 enum Command {
   Delete { path: String },
   MoveFileA { source: String, dest: String },

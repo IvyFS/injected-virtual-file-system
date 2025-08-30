@@ -1,109 +1,55 @@
-use integration_shared::{inject_self, workspace_root};
+use integration_shared::TestHarness;
 use proc_macros::ctest;
-use win_api::{
-  Wdk::{
-    Storage::FileSystem::{
-      FILE_DIRECTORY_INFORMATION, FileDirectoryInformation, NtQueryDirectoryFileEx,
-    },
-    System::SystemServices::SL_RETURN_SINGLE_ENTRY,
-  },
-  Win32::{
-    Foundation::{HANDLE, STATUS_NO_MORE_FILES, STATUS_SUCCESS},
-    System::IO::IO_STATUS_BLOCK,
-  },
-};
 
-use crate::{nt_create::nt_create_open_existing_dir, nt_open::nt_open_existing_dir};
+const NT_QUERY_DIRECTORY_BIN: &str = env!("CARGO_BIN_EXE_NT_QUERY_DIRECTORY");
 
-pub fn query_directory_file_all(handle: HANDLE) -> Vec<widestring::U16CString> {
-  const BUF_LEN: usize = 1024;
+#[ctest(crate::TESTS)]
+fn query_directory_empty() {
+  let mut test_harness = TestHarness::new(NT_QUERY_DIRECTORY_BIN);
 
-  let mut res = Vec::new();
-  loop {
-    let mut io_status_block: IO_STATUS_BLOCK = Default::default();
-    let mut file_infomation: [u8; BUF_LEN] = [0; BUF_LEN];
-    unsafe {
-      let (prefix, aligned, _suffix) = file_infomation.align_to_mut::<FILE_DIRECTORY_INFORMATION>();
+  std::fs::create_dir(test_harness.virtual_expected()).unwrap();
 
-      let status = NtQueryDirectoryFileEx(
-        handle,
-        None,
-        None,
-        None,
-        &raw mut io_status_block,
-        aligned.as_mut_ptr() as _,
-        BUF_LEN as u32 - prefix.len() as u32,
-        FileDirectoryInformation,
-        SL_RETURN_SINGLE_ENTRY,
-        None,
-      );
-      match status {
-        STATUS_SUCCESS => {}
-        STATUS_NO_MORE_FILES => break,
-        _ => panic!("error: {:X}", status.0),
-      }
+  test_harness.set_args([&test_harness.mount_expected_str(), ".", ".."]);
 
-      let info = &aligned[0];
-      let filename = widestring::U16CString::from_ptr(
-        &raw const info.FileName[0],
-        (info.FileNameLength / 2) as usize,
-      )
-      .unwrap();
-      res.push(filename.to_owned());
-    }
-  }
-
-  res
+  assert!(test_harness.write_config_and_output().status.success())
 }
 
 #[ctest(crate::TESTS)]
-fn nt_create_query() {
-  let workspace_root = workspace_root();
-  let virtual_root = workspace_root.join("integration\\target_folder");
-  let mount_point = workspace_root.join("integration\\examples");
+fn query_directory_multiple() {
+  let mut test_harness = TestHarness::new(NT_QUERY_DIRECTORY_BIN);
 
-  inject_self(&virtual_root, &mount_point);
+  std::fs::create_dir(test_harness.virtual_expected()).unwrap();
+  std::fs::create_dir(test_harness.virtual_expected().join("virtual_mod")).unwrap();
+  std::fs::write(
+    test_harness.virtual_expected().join("enabled_mods.json"),
+    b"",
+  )
+  .unwrap();
 
-  let handle = nt_create_open_existing_dir(&mount_point);
-  let found = query_directory_file_all(handle);
+  test_harness.set_args([
+    &test_harness.mount_expected_str(),
+    ".",
+    "..",
+    "virtual_mod",
+    "enabled_mods.json",
+  ]);
 
-  for expected in vec![
-    widestring::u16cstr!("."),
-    widestring::u16cstr!(".."),
-    widestring::u16cstr!("virtual_mod"),
-    widestring::u16cstr!("enabled_mods.json"),
-  ] {
-    assert!(
-      found.contains(&expected.to_ucstring()),
-      "expected file {expected:?} not in found {found:?}"
-    )
-  }
-  assert_eq!(found.len(), 4)
+  assert!(test_harness.write_config_and_output().status.success());
 }
 
 #[ctest(crate::TESTS)]
-fn nt_open_query() {
-  let workspace_root = workspace_root();
-  let virtual_root = workspace_root.join("integration\\target_folder");
-  let mount_point = workspace_root.join("integration\\examples");
+fn query_directory_should_fail() {
+  let mut test_harness = TestHarness::new(NT_QUERY_DIRECTORY_BIN);
 
-  inject_self(&virtual_root, &mount_point);
+  std::fs::create_dir(test_harness.virtual_expected()).unwrap();
 
-  let handle = nt_open_existing_dir(&mount_point);
-  let found = query_directory_file_all(handle);
+  test_harness.set_args([
+    &test_harness.mount_expected_str(),
+    ".",
+    "..",
+    "virtual_mod",
+    "enabled_mods.json",
+  ]);
 
-  for expected in vec![
-    widestring::u16cstr!("."),
-    widestring::u16cstr!(".."),
-    widestring::u16cstr!("virtual_mod"),
-    widestring::u16cstr!("enabled_mods.json"),
-  ] {
-    assert!(
-      found.contains(&expected.to_ucstring()),
-      "expected file {expected:?} not in found {found:?}"
-    )
-  }
-  assert_eq!(found.len(), 4)
+  assert!(!test_harness.write_config_and_output().status.success());
 }
-
-// TODO: add restart test

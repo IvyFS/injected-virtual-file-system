@@ -14,7 +14,7 @@ required-features = ["injector/testing-no-embed"]
 harness = false
 
 [dependencies]
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true, default-features = false, features = ["derive"] }
 integration-shared = { path = "../shared", artifact = "bin", lib = true }
 
 [dev-dependencies]

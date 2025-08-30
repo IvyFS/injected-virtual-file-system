@@ -16,7 +16,7 @@ agent = { path = "../agent", artifact = "cdylib" }
 shared-types = { workspace = true }
 
 # External
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true, default-features = true, features = ["derive"] }
 frida = { workspace = true }
 interprocess = { workspace = true }
 tokio = { workspace = true, features = ["time", "signal"] }
@@ -26,3 +26,6 @@ sysinfo = { version = "0.35.2", default-features = false, features = [
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-appender = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+win-api = { workspace = true }

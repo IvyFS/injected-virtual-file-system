@@ -5,7 +5,7 @@ use std::{
   process::exit,
   str::FromStr,
   sync::LazyLock,
-  time::{Duration, Instant},
+  time::Duration,
 };
 
 use ::tracing::{info, trace};
@@ -41,9 +41,8 @@ async fn main() {
   let config = InjectorConfig::from(cli);
 
   let target_config = config.target;
-  let exit_once_patched = config.exit_once_patched;
 
-  let _guard = tracing::init_tracing(&config.debug, exit_once_patched);
+  let _guard = tracing::init_tracing(&config.debug);
 
   let device_manager = frida::DeviceManager::obtain(&FRIDA);
   let local_device = device_manager.get_local_device();
@@ -85,33 +84,37 @@ async fn main() {
 
   trace!("*** Injected, id={id}");
 
-  if target_config.pid.is_none() {
-    PATCH_COMPLETE.notified().await;
-    trace!("*** Finished patching");
-    let patch_end = std::time::Instant::now();
-    let patch_total = patch_end - patch_start;
-    trace!(target: INJECTOR_PROFILING_TARGET, patch_end = format!("{patch_end:#?}"), patch_total = format!("{patch_total:#?}"));
-    device.resume(pid).unwrap();
+  PATCH_COMPLETE.notified().await;
+  trace!("*** Finished patching");
+  let patch_end = std::time::Instant::now();
+  let patch_total = patch_end - patch_start;
+  trace!(target: INJECTOR_PROFILING_TARGET, patch_end = format!("{patch_end:#?}"), patch_total = format!("{patch_total:#?}"));
+
+  // Don't wait if we're patching an already running process
+  if target_config.pid.is_some() {
+    exit(0)
   }
 
-  if !exit_once_patched {
-    let ctrlc_signal = tokio::signal::ctrl_c();
-    let deadline_check = deadline_check(pid, config.instant_shutdown);
-    tokio::pin!(deadline_check);
+  let exit_code = await_process_or_ctrlc(&mut device, pid)
+    .await
+    .expect("Wait for child process termination or ctrl-c");
 
-    tokio::select! {
-      _ = &mut deadline_check => {
-        return;
-      },
-      _ = ctrlc_signal => {
-        info!(target: "injector", "Got Ctrl-C - Killing hooked process");
-        device.kill(pid).unwrap();
-      }
+  if !config.instant_shutdown {
+    let mut interval = tokio::time::interval(SHUTDOWN_INTERVAL);
+    info!("Hooked process is dead. Shutting down IPC socket.");
+    for count in 0..SHUTDOWN_COUNT {
+      interval.tick().await;
+
+      info!(
+        "Terminating in {:.1}s",
+        (SHUTDOWN_INTERVAL * (SHUTDOWN_COUNT - count) as u32).as_secs_f32()
+      )
     }
-    deadline_check.await;
-  } else {
-    trace!("Exiting");
-    exit(0)
+  }
+  info!("shutdown");
+
+  if config.return_target_exit_code {
+    exit(exit_code as i32)
   }
 }
 
@@ -140,7 +143,74 @@ fn spawn_target(target_config: &TargetConfig, pipe_stdio: bool, device: &mut Dev
 const SHUTDOWN_COUNT: usize = 3;
 const SHUTDOWN_INTERVAL: Duration = Duration::from_secs(1);
 
-async fn deadline_check(pid: u32, instant_shutdown: bool) {
+async fn await_process_or_ctrlc(
+  device: &mut Device<'_>,
+  pid: u32,
+) -> Result<u32, tokio::task::JoinError> {
+  let await_process = await_process(pid);
+  tokio::pin!(await_process);
+
+  device.resume(pid).expect("Resume target");
+
+  let ctrlc_signal = tokio::signal::ctrl_c();
+
+  tokio::select! {
+    exit_code = &mut await_process => {
+      return exit_code;
+    },
+    _ = ctrlc_signal => {
+      info!(target: "injector", "Got Ctrl-C - Killing hooked process");
+      device.kill(pid).unwrap();
+    }
+  }
+  await_process.await
+}
+
+#[cfg(windows)]
+fn await_process(pid: u32) -> impl Future<Output = Result<u32, tokio::task::JoinError>> {
+  use std::mem::MaybeUninit;
+
+  use shared_types::unsafe_types::SendPtr;
+  use win_api::Win32::{
+    Foundation::HANDLE,
+    System::Threading::{
+      GetExitCodeProcess, INFINITE, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+      PROCESS_SYNCHRONIZE, WaitForSingleObject,
+    },
+  };
+
+  let process = unsafe {
+    OpenProcess(
+      PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+      false,
+      pid,
+    )
+  }
+  .expect("Open handle to injected process");
+  let process = SendPtr(process.0);
+
+  tokio::task::spawn_blocking(move || {
+    let _ = &process;
+    let process = HANDLE(process.0);
+    let res = unsafe { WaitForSingleObject(process, INFINITE) };
+
+    if res.0 == 0 {
+      let mut exit_code = MaybeUninit::uninit();
+      unsafe {
+        GetExitCodeProcess(process, exit_code.as_mut_ptr()).expect("Get process exit code");
+        dbg!(exit_code.assume_init())
+      }
+    } else {
+      panic!(
+        "Wait on process returned with unexpected event: {:x}",
+        res.0
+      )
+    }
+  })
+}
+
+#[cfg(not(windows))]
+async fn await_process(pid: u32) -> Result<u32, tokio::task::JoinError> {
   use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 
   let pid = Pid::from_u32(pid);
@@ -148,7 +218,7 @@ async fn deadline_check(pid: u32, instant_shutdown: bool) {
   let mut system =
     System::new_with_specifics(RefreshKind::nothing().with_processes(process_refresh));
   let mut interval = tokio::time::interval_at(
-    (Instant::now() + Duration::from_secs(1)).into(),
+    (std::time::Instant::now() + Duration::from_secs(1)).into(),
     shared_types::DEFAULT_HEARTBEAT,
   );
 
@@ -156,21 +226,9 @@ async fn deadline_check(pid: u32, instant_shutdown: bool) {
     interval.tick().await;
 
     system.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, process_refresh);
-    if system.process(pid).filter(|proc| proc.exists()).is_none() {
-      if !instant_shutdown {
-        let mut interval = tokio::time::interval(SHUTDOWN_INTERVAL);
-        info!("Hooked process is dead. Shutting down IPC socket.");
-        for count in 0..SHUTDOWN_COUNT {
-          interval.tick().await;
 
-          info!(
-            "Terminating in {:.1}s",
-            (SHUTDOWN_INTERVAL * (SHUTDOWN_COUNT - count) as u32).as_secs_f32()
-          )
-        }
-      }
-      info!("shutdown");
-      return;
+    if system.process(pid).is_none() {
+      return Ok(0);
     }
   }
 }

@@ -12,9 +12,9 @@ pub struct InjectorConfig {
   pub debug: DebugConfig,
   pub target: TargetConfig,
   #[serde(default)]
-  pub exit_once_patched: bool,
-  #[serde(default)]
   pub instant_shutdown: bool,
+  #[serde(default)]
+  pub return_target_exit_code: bool,
 }
 
 impl InjectorConfig {

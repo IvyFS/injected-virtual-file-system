@@ -5,7 +5,6 @@ use std::{error::Error, process::ExitCode};
 use libtest_mimic::{Arguments, Trial, run};
 use linkme::distributed_slice;
 
-mod common;
 mod create_remove_directory;
 mod file_edit;
 mod find_first_file;

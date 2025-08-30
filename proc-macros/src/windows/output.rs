@@ -227,8 +227,8 @@ impl ToTokens for OriginalFn {
     } = self;
 
     let output = quote! {
-      pub static #cell_name: shared_types::unsafe_types::UnsafeSyncCell<#target_sig_name> =
-        shared_types::unsafe_types::UnsafeSyncCell::new(#detour_name);
+      pub static #cell_name: shared_types::unsafe_types::SyncUnsafeCell<#target_sig_name> =
+        shared_types::unsafe_types::SyncUnsafeCell::new(#detour_name);
 
       pub unsafe fn #original_fn_name(#original_fn_args) #original_fn_returns {
         (*#cell_name.get())(#original_fn_bindings)
