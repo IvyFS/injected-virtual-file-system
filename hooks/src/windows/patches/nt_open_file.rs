@@ -1,21 +1,19 @@
-use std::{ffi::OsString, path::PathBuf};
-
 use proc_macros::patch_fn;
+use shared_types::HookError;
 use win_api::{
   Wdk::Foundation::OBJECT_ATTRIBUTES,
   Win32::{
-    Foundation::{HANDLE, NTSTATUS, STATUS_NO_SUCH_FILE},
+    Foundation::{HANDLE, NTSTATUS},
     System::IO::IO_STATUS_BLOCK,
   },
 };
 
 use crate::{
-  log::{logfmt_dbg, trace_expr},
+  log::trace_inspect,
   virtual_paths::windows::get_virtual_path,
   windows::helpers::{
     handles::{HANDLE_MAP, ObjectAttributesExt},
     object_attributes::RawObjectAttrsExt,
-    retry_with,
   },
 };
 
@@ -40,14 +38,12 @@ pub unsafe extern "system" fn detour_nt_open_file(
   shareaccess: u32,
   openoptions: u32,
 ) -> NTSTATUS {
-  let res = trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
-    let path: PathBuf = original_attrs.path()?;
-    let (attrs, reroute_guard) = if let Some(virtual_path) = get_virtual_path(&path)? {
-      let attrs = original_attrs.reroute(virtual_path.path)?;
-      (&raw const attrs.attrs, Some(attrs))
-    } else {
-      (original_attrs, None)
-    };
+  let path = unsafe { original_attrs.path() };
+  let virtual_res = trace_inspect!(unsafe {
+    let path = path.clone()?;
+    let virtual_path = get_virtual_path(&path)?.ok_or(HookError::NoVirtualPath)?;
+    let owned_attrs = original_attrs.reroute(virtual_path.path)?;
+    let attrs = &raw const owned_attrs.attrs;
 
     let res = original_nt_open_file(
       filehandle,
@@ -58,43 +54,36 @@ pub unsafe extern "system" fn detour_nt_open_file(
       openoptions,
     );
 
-    logfmt_dbg!("{:x}", res.0);
-    let (res, path, rerouted) = match reroute_guard {
-      Some(_) if res.is_err() => {
-        retry_with((res, OsString::new(), true), || {
-          let res = original_nt_open_file(
-            filehandle,
-            desiredaccess,
-            original_attrs,
-            iostatusblock,
-            shareaccess,
-            openoptions,
-          );
-
-          res.is_ok().then(|| {
-            (res, path.into_os_string(), false)
-          })
-        })
-      }
-      Some(reroute) => {
-        logfmt_dbg!(
-          "rerouting from {:?} to {:?}",
-          path,
-          reroute.unicode_path.string_buffer
-        );
-        (res, reroute.unicode_path.string_buffer.to_os_string(), true)
-      }
-      None => {
-        (res, path.into_os_string(), false)
-      }
-    };
-
     if res.is_ok() {
-      HANDLE_MAP.insert(filehandle, path, rerouted);
+      Ok(Ok((owned_attrs, res)))
+    } else {
+      Ok(Err(res))
     }
-
-    Ok(res)
   });
 
-  res
+  if let Ok(Ok((owned_attrs, res))) = virtual_res {
+    HANDLE_MAP.insert(
+      filehandle,
+      owned_attrs.unicode_path.string_buffer.to_os_string(),
+      true,
+    );
+    res
+  } else {
+    let res = unsafe {
+      original_nt_open_file(
+        filehandle,
+        desiredaccess,
+        original_attrs,
+        iostatusblock,
+        shareaccess,
+        openoptions,
+      )
+    };
+    if res.is_ok()
+      && let Ok(path) = path
+    {
+      HANDLE_MAP.insert(filehandle, path, false);
+    }
+    res
+  }
 }

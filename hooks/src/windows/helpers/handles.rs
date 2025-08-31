@@ -22,7 +22,9 @@ use win_api::{
 };
 
 use crate::{
-  extension_traits::DashExt, raw_ptr::UnsafeRefCast, windows::helpers::paths::strip_nt_prefix,
+  extension_traits::DashExt,
+  raw_ptr::{UnsafePtrCast, UnsafePtrCastError},
+  windows::helpers::paths::strip_nt_prefix,
 };
 
 #[allow(dead_code)]
@@ -148,11 +150,11 @@ impl HandleMap {
 }
 
 pub trait ObjectAttributesExt {
-  unsafe fn path(&self) -> Result<PathBuf, HookError>;
+  unsafe fn path(&self) -> Result<PathBuf, UnsafePtrCastError>;
 }
 
 impl ObjectAttributesExt for OBJECT_ATTRIBUTES {
-  unsafe fn path(&self) -> Result<PathBuf, HookError> {
+  unsafe fn path(&self) -> Result<PathBuf, UnsafePtrCastError> {
     unsafe {
       let unicode_string = self.ObjectName.ref_cast()?;
       let stem_raw = OsString::from_wide(
@@ -177,8 +179,8 @@ impl ObjectAttributesExt for OBJECT_ATTRIBUTES {
   }
 }
 
-impl<T: UnsafeRefCast<OBJECT_ATTRIBUTES> + Copy> ObjectAttributesExt for T {
-  unsafe fn path(&self) -> Result<PathBuf, HookError> {
+impl<T: UnsafePtrCast<OBJECT_ATTRIBUTES> + Copy> ObjectAttributesExt for T {
+  unsafe fn path(&self) -> Result<PathBuf, UnsafePtrCastError> {
     unsafe { self.ref_cast()?.path() }
   }
 }

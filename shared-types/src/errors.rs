@@ -20,10 +20,10 @@ pub enum HookError {
   #[error("json error: {0}")]
   JsonError(#[from] serde_json::error::Error),
 
-  #[error("Failed to cast raw const ptr of type {typ}")]
-  RawConstPtrCast { typ: String },
-  #[error("Failed to cast raw mut ptr of type {typ}")]
-  RawMutPtrCast { typ: String },
+  #[error("Failed to cast raw const ptr of type {typ} to {} reference", unsafe_ptr_cast_ref_type(*mutable_ref))]
+  RawConstPtrCast { typ: String, mutable_ref: bool },
+  #[error("Failed to cast raw mut ptr of type {typ} to {} reference", unsafe_ptr_cast_ref_type(*mutable_ref))]
+  RawMutPtrCast { typ: String, mutable_ref: bool },
 
   #[cfg(windows)]
   #[error("Failed to allocate Rust string for conversion from UTF-16 string")]
@@ -43,6 +43,9 @@ pub enum HookError {
     path: PathBuf,
     cause: std::io::Error,
   },
+
+  #[error("no virtual path")]
+  NoVirtualPath,
 
   #[error("std::io::Error {0}")]
   StdIo(#[from] std::io::Error),
@@ -88,4 +91,8 @@ impl<T, E: Into<HookError>> ErrorContext<T> for Result<T, E> {
       }),
     }
   }
+}
+
+fn unsafe_ptr_cast_ref_type(mutable: bool) -> &'static str {
+  if mutable { "mutable" } else { "immutable" }
 }

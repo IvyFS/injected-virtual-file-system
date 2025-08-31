@@ -6,7 +6,6 @@ use tempdir::TempDir;
 use integration_shared::{TestHarness, workspace_root};
 
 const WORKSPACE_ROOT: &str = env!("CARGO_WORKSPACE_DIR");
-const INJECTOR: &str = env!("CARGO_BIN_FILE_INJECTOR");
 
 pub(crate) fn clean_and_build() {
   let integration = Path::new(WORKSPACE_ROOT).join("integration");
@@ -21,34 +20,12 @@ pub(crate) fn clean_and_build() {
   assert!(output.status.success());
 }
 
-pub(crate) fn java_list_dirs(capture: bool) -> Vec<String> {
-  let mut command = Command::new(INJECTOR);
-  command
-    .current_dir(WORKSPACE_ROOT)
-    .arg("integration/assets/java-fs-demo-config.toml");
-
-  if capture {
-    let output = command.output().unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout)
-      .replace(&['[', ']', '\r', '\n'], "")
-      .replace("examples\\", "");
-
-    stdout.split(",").map(ToOwned::to_owned).collect()
-  } else {
-    let mut child = command.spawn().unwrap();
-
-    assert!(child.wait().unwrap().success());
-
-    Vec::new()
-  }
-}
-
 #[test]
 #[ignore]
 fn sanity_test() {
   clean_and_build();
 
-  let child = Command::new(INJECTOR)
+  let child = Command::new(env!("CARGO_BIN_FILE_INJECTOR"))
     .current_dir(WORKSPACE_ROOT)
     .arg("integration/assets/java-fs-demo-config.toml")
     .spawn()
@@ -62,15 +39,33 @@ fn sanity_test() {
 fn absolute_redirect() {
   clean_and_build();
 
-  let found_files = java_list_dirs(true);
+  let assets_path = workspace_root().join("integration/assets");
+  let jvm_path = assets_path.join("jdk/bin/java.exe");
+  let mut test_harness = TestHarness::new(jvm_path.display()).expected_name("virtual_mod");
 
-  for expected in vec!["virtual_mod"] {
-    assert!(
-      found_files.iter().any(|found| found == expected),
-      "expected file {expected:?} not in found {found_files:?}"
-    )
-  }
-  assert_eq!(found_files.len(), 1)
+  std::fs::create_dir(test_harness.virtual_expected()).unwrap();
+  std::fs::copy(
+    workspace_root().join("integration/target_folder/virtual_mod/mod_info.json"),
+    test_harness.virtual_expected().join("mod_info.json"),
+  )
+  .unwrap();
+
+  let output = test_harness
+    .set_args([
+      "-classpath".to_owned(),
+      assets_path
+        .join("java-fs-demo/build/libs/java-fs-demo-0.0.1.jar")
+        .display()
+        .to_string(),
+      "FsDemo".to_owned(),
+      test_harness.mount_dir.path().display().to_string(),
+    ])
+    .write_config_and_output();
+
+  let found = parse_java_bin_output(&output.stdout);
+
+  assert_eq!(1, found.len(), "{found:?}");
+  assert_eq!(test_harness.mount_expected_str(), found[0], "{found:?}");
 }
 
 #[ctest(crate::TESTS)]
@@ -108,15 +103,9 @@ fn relative_redirect() {
     .write_config()
     .spawn_output();
 
-  let stdout = String::from_utf8_lossy(&output.stdout)
-    .replace(&['[', ']', '\r', '\n'], "")
-    .replace("examples\\", "");
+  let found = parse_java_bin_output(&output.stdout);
 
-  let found: Vec<String> = stdout
-    .split(",")
-    .filter_map(|split| (!split.is_empty()).then(|| split.to_owned()))
-    .collect();
-
+  assert_eq!(1, found.len(), "{found:?}");
   assert_eq!(
     test_harness.mount_expected(),
     test_harness
@@ -127,5 +116,15 @@ fn relative_redirect() {
       .unwrap(),
     "{found:?}"
   );
-  assert_eq!(1, found.len(), "{found:?}")
+}
+
+fn parse_java_bin_output(stdout: &[u8]) -> Vec<String> {
+  let stdout = String::from_utf8_lossy(stdout)
+    .replace(&['[', ']', '\r', '\n'], "")
+    .replace("examples\\", "");
+
+  stdout
+    .split(",")
+    .filter_map(|split| (!split.is_empty()).then(|| split.to_owned()))
+    .collect()
 }

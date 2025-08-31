@@ -104,11 +104,25 @@ mod macros {
     };
   }
 
+  macro_rules! trace_inspect {
+    ($($tt:tt)*) => {
+      {
+        #[allow(clippy::redundant_closure_call)]
+        let res: Result::<_, shared_types::HookError> = (|| {
+          $($tt)*
+        })();
+        res.inspect_err(|err| {
+          crate::log::log_lossy(shared_types::Message::Error(err.to_string()))
+        })
+      }
+    };
+  }
+
   macro_rules! logfmt_dbg {
     ($fmt_str:literal$($tt:tt)*) => {
       crate::log::log(shared_types::Message::DebugInfo(format!(concat!("Debug | ", file!(), ":", line!(), " = ", $fmt_str) $($tt)*)))
     };
   }
 
-  pub(crate) use {logfmt_dbg, trace, trace_expr};
+  pub(crate) use {logfmt_dbg, trace, trace_expr, trace_inspect};
 }

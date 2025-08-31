@@ -134,7 +134,7 @@ pub unsafe fn format_unicode_string(
 #[cfg(test)]
 mod test {
   use crate::{
-    raw_ptr::UnsafeRefCast,
+    raw_ptr::UnsafePtrCast,
     windows::helpers::unicode_string::{OwnedUnicodeString, nil_fix},
   };
 
