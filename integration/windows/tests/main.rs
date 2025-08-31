@@ -12,6 +12,7 @@ mod java;
 mod nt_create;
 mod nt_open;
 mod nt_query_directory_file;
+mod overlay;
 
 #[distributed_slice]
 pub static TESTS: [(&str, fn())];
