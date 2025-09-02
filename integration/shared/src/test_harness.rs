@@ -134,29 +134,30 @@ impl TestHarness {
     self
   }
 
-  pub fn write_config(&mut self) -> &mut Self {
+  fn write_config(&mut self) -> &mut Self {
     let config_str = toml::to_string_pretty(&self.config).unwrap();
     std::fs::write(&self.config_path, config_str).unwrap();
     self
   }
 
-  pub fn spawn_target(&mut self) {
-    let child = Command::new(INJECTOR)
-      .arg(self.config_path.as_os_str())
-      .spawn()
-      .unwrap();
-    assert!(child.wait_with_output().unwrap().status.success());
-  }
-
-  pub fn write_config_and_output(&mut self) -> std::process::Output {
-    self.write_config();
-    self.spawn_output()
-  }
-
   pub fn spawn_output(&mut self) -> std::process::Output {
+    self.write_config();
     Command::new(INJECTOR)
       .arg(self.config_path.as_os_str())
       .output()
       .unwrap()
+  }
+
+  pub fn spawn_output_and_stdio(&mut self) -> (std::process::Output, String, String) {
+    self.write_config();
+    let output = Command::new(INJECTOR)
+      .arg(self.config_path.as_os_str())
+      .output()
+      .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+    (output, stdout, stderr)
   }
 }

@@ -31,6 +31,7 @@ proc-macros = { path = "proc-macros" }
 shared-types = { path = "shared-types" }
 
 # External
+ext-trait = "2.0.0"
 frida = { git = "https://github.com/atlanticaccent/frida-rust.git", branch = "add-device-output-listener", features = [
   "auto-download",
 ] }

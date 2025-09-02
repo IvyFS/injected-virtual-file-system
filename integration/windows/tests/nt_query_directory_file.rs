@@ -11,7 +11,7 @@ fn query_directory_empty() {
 
   test_harness.set_args([&test_harness.mount_expected_str(), ".", ".."]);
 
-  assert!(test_harness.write_config_and_output().status.success())
+  assert!(test_harness.spawn_output().status.success())
 }
 
 #[ctest(crate::TESTS)]
@@ -34,7 +34,7 @@ fn query_directory_multiple() {
     "enabled_mods.json",
   ]);
 
-  assert!(test_harness.write_config_and_output().status.success());
+  assert!(test_harness.spawn_output().status.success());
 }
 
 #[ctest(crate::TESTS)]
@@ -51,5 +51,5 @@ fn query_directory_should_fail() {
     "enabled_mods.json",
   ]);
 
-  assert!(!test_harness.write_config_and_output().status.success());
+  assert!(!test_harness.spawn_output().status.success());
 }

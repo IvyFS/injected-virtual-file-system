@@ -28,5 +28,5 @@ fn nt_query_directory_overlay_files() {
     "mount.txt",
   ]);
 
-  assert!(!test_harness.write_config_and_output().status.success());
+  assert!(!test_harness.spawn_output().status.success());
 }

@@ -1,8 +1,8 @@
 use std::{ffi::OsStr, path::Path, process::Command, sync::Once};
 
+pub mod output;
 #[allow(dead_code)]
 pub mod test_harness;
-pub mod output;
 
 pub use test_harness::TestHarness;
 
@@ -34,4 +34,15 @@ pub fn inject_self(virtual_root: impl AsRef<Path>, mount_point: impl AsRef<Path>
 
 pub fn workspace_root<'a>() -> &'a Path {
   Path::new(WORKSPACE_ROOT)
+}
+
+#[ext_trait::extension(pub trait PrcoessOutputExt)]
+impl std::process::Output {
+  fn fmt_stdio(&self) -> String {
+    format!(
+      "stdout: {}\nstderr: {}",
+      String::from_utf8_lossy(&self.stdout),
+      String::from_utf8_lossy(&self.stderr)
+    )
+  }
 }

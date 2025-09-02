@@ -22,7 +22,7 @@ fn delete_file() {
       "delete".to_owned(),
       test_harness.mount_expected().display().to_string(),
     ])
-    .write_config_and_output();
+    .spawn_output();
 
   assert!(test_harness.mount_expected().exists());
   assert!(!test_harness.virtual_expected().exists());
@@ -48,7 +48,7 @@ fn move_file_ansi() {
       test_harness.mount_expected().display().to_string(),
       mount_dest.display().to_string(),
     ])
-    .write_config_and_output();
+    .spawn_output();
 
   assert!(test_harness.mount_expected().exists());
   assert!(!mount_dest.exists());
@@ -76,7 +76,7 @@ fn move_file_wide() {
       test_harness.mount_expected().display().to_string(),
       mount_dest.display().to_string(),
     ])
-    .write_config_and_output();
+    .spawn_output();
 
   assert!(test_harness.mount_expected().exists());
   assert!(!mount_dest.exists());

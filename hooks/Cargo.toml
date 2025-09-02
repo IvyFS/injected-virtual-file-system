@@ -13,7 +13,7 @@ shared-types = { workspace = true }
 frida-gum = { workspace = true }
 interprocess = { workspace = true }
 dashmap = "6.1.0"
-ext-trait = "2.0.0"
+ext-trait = { workspace = true }
 crossbeam-queue = "0.3.12"
 
 [target.'cfg(windows)'.dependencies]

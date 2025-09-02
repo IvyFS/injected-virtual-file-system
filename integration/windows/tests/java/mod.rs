@@ -60,7 +60,7 @@ fn absolute_redirect() {
       "FsDemo".to_owned(),
       test_harness.mount_dir.path().display().to_string(),
     ])
-    .write_config_and_output();
+    .spawn_output();
 
   let found = parse_java_bin_output(&output.stdout);
 
@@ -100,7 +100,6 @@ fn relative_redirect() {
         test_harness.mount_dir.path().file_name().unwrap().display()
       ),
     ])
-    .write_config()
     .spawn_output();
 
   let found = parse_java_bin_output(&output.stdout);

@@ -15,6 +15,7 @@ injector = { path = "../../injector", features = [
 shared-types = { workspace = true }
 
 # External
+ext-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tempdir = "0.3.7"

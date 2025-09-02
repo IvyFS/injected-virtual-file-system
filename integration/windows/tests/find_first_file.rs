@@ -24,7 +24,7 @@ fn absolute_redirect() {
 
   set_up_test_files(test_harness.virtual_dir.path());
 
-  test_harness.write_config_and_output();
+  test_harness.spawn_output();
 
   let found_files: Vec<String> = read_output(test_harness.output_file);
 
@@ -52,7 +52,7 @@ fn relative_redirect() {
 
   set_up_test_files(test_harness.virtual_dir.path());
 
-  test_harness.write_config_and_output();
+  test_harness.spawn_output();
 
   let found_files: Vec<String> = read_output(test_harness.output_file);
 
@@ -80,7 +80,7 @@ fn no_redirect() {
 
   set_up_test_files(test_harness.extra_dir.path());
 
-  test_harness.write_config_and_output();
+  test_harness.spawn_output();
 
   let found_files: Vec<String> = read_output(test_harness.output_file);
 

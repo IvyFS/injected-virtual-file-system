@@ -17,7 +17,7 @@ fn create_directory_w() {
 
   test_harness
     .set_args([test_harness.mount_expected().display().to_string()])
-    .write_config_and_output();
+    .spawn_output();
 
   assert!(!test_harness.mount_expected().exists());
   assert!(test_harness.virtual_expected().exists());
@@ -39,8 +39,9 @@ fn remove_directory_w() {
       test_harness.mount_expected().display().to_string(),
       "delete".to_owned(),
     ])
-    .write_config_and_output();
+    .spawn_output();
 
+  // TODO: should deleting a virtual folder allow the target to see a mounted folder that might have been hidden by it?
   assert!(test_harness.mount_expected().exists());
   assert!(!test_harness.virtual_expected().exists());
 }

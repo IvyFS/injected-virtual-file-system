@@ -1,4 +1,4 @@
-use integration_shared::TestHarness;
+use integration_shared::{PrcoessOutputExt, TestHarness};
 use proc_macros::ctest;
 
 const NT_OPEN_CREATE_BIN: &str = env!("CARGO_BIN_EXE_NT_OPEN_CREATE");
@@ -11,7 +11,7 @@ fn open_existing_dir_in_virtual_fs() {
 
   test_harness.set_args(["--is-dir", &test_harness.mount_expected_str(), "create"]);
 
-  assert!(test_harness.write_config_and_output().status.success())
+  assert!(test_harness.spawn_output().status.success())
 }
 
 #[ctest(crate::TESTS)]
@@ -20,7 +20,7 @@ fn should_fail() {
 
   test_harness.set_args(["--is-dir", &test_harness.mount_expected_str(), "create"]);
 
-  assert!(!test_harness.write_config_and_output().status.success())
+  assert!(!test_harness.spawn_output().status.success())
 }
 
 #[ctest(crate::TESTS)]
@@ -34,7 +34,7 @@ fn mkdir_creates_dir_in_virtual_fs() {
     "--create-not-exists",
   ]);
 
-  assert!(test_harness.write_config_and_output().status.success());
+  assert!(test_harness.spawn_output().status.success());
   assert!(test_harness.virtual_expected().is_dir());
 }
 
@@ -46,7 +46,7 @@ fn open_existing_file_in_virtual_fs() {
 
   test_harness.set_args([&test_harness.mount_expected_str(), "create"]);
 
-  assert!(test_harness.write_config_and_output().status.success())
+  assert!(test_harness.spawn_output().status.success())
 }
 
 #[ctest(crate::TESTS)]
@@ -59,6 +59,62 @@ fn mk_file_creates_file_in_virtual_fs() {
     "--create-not-exists",
   ]);
 
-  assert!(test_harness.write_config_and_output().status.success());
+  assert!(test_harness.spawn_output().status.success());
   assert!(test_harness.virtual_expected().is_file());
+}
+
+#[ctest(crate::TESTS)]
+fn open_virtual_only_dir_ignores_mount_file() {
+  let mut harness = TestHarness::new(NT_OPEN_CREATE_BIN);
+
+  std::fs::create_dir(harness.virtual_expected()).unwrap();
+  std::fs::write(harness.mount_expected(), b"").unwrap();
+
+  harness.set_args(["--is-dir", &harness.mount_expected_str(), "create"]);
+
+  let output = harness.spawn_output();
+
+  assert!(output.status.success(), "{}", output.fmt_stdio());
+}
+
+#[ctest(crate::TESTS)]
+fn open_virtual_only_file_ignores_mount_dir() {
+  let mut harness = TestHarness::new(NT_OPEN_CREATE_BIN);
+
+  std::fs::write(harness.virtual_expected(), b"").unwrap();
+  std::fs::create_dir(harness.mount_expected()).unwrap();
+
+  harness.set_args([&harness.mount_expected_str(), "create"]);
+
+  let output = harness.spawn_output();
+
+  assert!(output.status.success(), "{}", output.fmt_stdio());
+}
+
+#[ctest(crate::TESTS)]
+fn open_mount_only_dir_ignores_virtual_file() {
+  let mut harness = TestHarness::new(NT_OPEN_CREATE_BIN);
+
+  std::fs::write(harness.virtual_expected(), b"").unwrap();
+  std::fs::create_dir(harness.mount_expected()).unwrap();
+
+  harness.set_args(["--is-dir", &harness.mount_expected_str(), "create"]);
+
+  let output = harness.spawn_output();
+
+  assert!(output.status.success(), "{}", output.fmt_stdio());
+}
+
+#[ctest(crate::TESTS)]
+fn open_mount_only_file_ignores_virtual_dir() {
+  let mut harness = TestHarness::new(NT_OPEN_CREATE_BIN);
+
+  std::fs::create_dir(harness.virtual_expected()).unwrap();
+  std::fs::write(harness.mount_expected(), b"").unwrap();
+
+  harness.set_args([&harness.mount_expected_str(), "create"]);
+
+  let output = harness.spawn_output();
+
+  assert!(output.status.success(), "{}", output.fmt_stdio());
 }
