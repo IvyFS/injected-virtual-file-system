@@ -52,10 +52,12 @@ pub fn log(msg: Message) {
   }
 }
 
+#[inline(always)]
 pub fn log_lossy(msg: Message) {
   log(msg);
 }
 
+#[inline(always)]
 pub fn log_info(msg: impl ToString) {
   log(Message::DebugInfo(msg.to_string()));
 }
@@ -70,8 +72,12 @@ pub fn log_debug(msg: impl std::fmt::Debug) {
   )));
 }
 
-pub fn log_error(err: impl Error) {
-  log(Message::Error(err.to_string()));
+#[inline(always)]
+pub fn log_error(err: &HookError) {
+  match err {
+    HookError::NoVirtualPath => {}
+    err => log(Message::Error(err.to_string())),
+  };
 }
 
 mod macros {
@@ -81,7 +87,7 @@ mod macros {
         $($tt)*
         Result::<_, shared_types::HookError>::Ok(())
       })() {
-        crate::log::log_lossy(shared_types::Message::Error(err.to_string()))
+        crate::log::log_error(err)
       }
     };
   }
@@ -96,7 +102,7 @@ mod macros {
         match res {
           Ok(val) => val,
           Err(err) => {
-            crate::log::log_lossy(shared_types::Message::Error(err.to_string()));
+            crate::log::log_error(&err);
             return $default
           }
         }
@@ -112,7 +118,7 @@ mod macros {
           $($tt)*
         })();
         res.inspect_err(|err| {
-          crate::log::log_lossy(shared_types::Message::Error(err.to_string()))
+          crate::log::log_error(err)
         })
       }
     };

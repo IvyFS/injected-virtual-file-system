@@ -25,6 +25,7 @@ unsafe extern "system" fn detour_create_directory_w(
 
 patch_fn!(RemoveDirectoryW, (PCWSTR) -> BOOL, detour_remove_directory_w);
 
+// TODO: if there's "mounted" folder at this path delete it too
 unsafe extern "system" fn detour_remove_directory_w(path: PCWSTR) -> BOOL {
   trace_expr!(BOOL(0), unsafe {
     let mut virtual_path_res = get_virtual_path_or_wide(path)?;

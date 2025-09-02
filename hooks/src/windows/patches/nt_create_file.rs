@@ -1,7 +1,7 @@
-use std::{ffi::c_void, path::PathBuf};
+use std::ffi::c_void;
 
 use proc_macros::patch_fn;
-use win_api::Win32::Foundation::STATUS_NO_SUCH_FILE;
+use shared_types::HookError;
 pub use win_api::{
   Wdk::{
     Foundation::OBJECT_ATTRIBUTES,
@@ -15,7 +15,7 @@ pub use win_api::{
 };
 
 use crate::{
-  log::{logfmt_dbg, trace_expr},
+  log::trace_inspect,
   virtual_paths::windows::get_virtual_path,
   windows::helpers::{
     handles::{HANDLE_MAP, ObjectAttributesExt},
@@ -44,7 +44,7 @@ patch_fn!(
 pub(crate) unsafe extern "system" fn detour_nt_create_file(
   handle: *mut HANDLE,
   _1: FILE_ACCESS_RIGHTS,
-  attrs: *const OBJECT_ATTRIBUTES,
+  original_attrs: *const OBJECT_ATTRIBUTES,
   _3: *mut IO_STATUS_BLOCK,
   _4: *const i64,
   flags_and_attributes: FILE_FLAGS_AND_ATTRIBUTES,
@@ -54,19 +54,17 @@ pub(crate) unsafe extern "system" fn detour_nt_create_file(
   _9: *const c_void,
   _10: u32,
 ) -> NTSTATUS {
-  trace_expr!(STATUS_NO_SUCH_FILE, unsafe {
-    let path: PathBuf = attrs.path()?;
-    let (attrs_ptr, reroute_guard) = if let Some(virtual_path) = get_virtual_path(&path)? {
-      let attrs = attrs.reroute(virtual_path.path)?;
-      (&raw const attrs.attrs, Some(attrs))
-    } else {
-      (attrs, None)
-    };
+  let path = unsafe { original_attrs.path() };
+  let virtual_res = trace_inspect!(unsafe {
+    let path = path.as_ref().map_err(Clone::clone)?;
+    let virtual_path = get_virtual_path(path)?.ok_or(HookError::NoVirtualPath)?;
+    let owned_attrs = original_attrs.reroute(virtual_path.path)?;
+    let attrs = &raw const owned_attrs.attrs;
 
-    let status = original_nt_create_file(
+    let res = original_nt_create_file(
       handle,
       _1,
-      attrs_ptr,
+      attrs,
       _3,
       _4,
       flags_and_attributes,
@@ -77,23 +75,41 @@ pub(crate) unsafe extern "system" fn detour_nt_create_file(
       _10,
     );
 
-    if status.is_ok() {
-      if let Some(reroute) = reroute_guard {
-        logfmt_dbg!(
-          "rerouting from {:?} to {:?}",
-          path,
-          reroute.unicode_path.string_buffer
-        );
-        HANDLE_MAP.insert(
-          handle,
-          reroute.unicode_path.string_buffer.to_os_string(),
-          true,
-        )
-      } else {
-        HANDLE_MAP.insert(handle, path, false)
-      };
+    if res.is_ok() {
+      Ok(Ok((owned_attrs, res)))
+    } else {
+      Ok(Err(res))
     }
+  });
 
-    Ok(status)
-  })
+  if let Ok(Ok((owned_attrs, res))) = virtual_res {
+    HANDLE_MAP.insert(
+      handle,
+      owned_attrs.unicode_path.string_buffer.to_os_string(),
+      true,
+    );
+    res
+  } else {
+    let res = unsafe {
+      original_nt_create_file(
+        handle,
+        _1,
+        original_attrs,
+        _3,
+        _4,
+        flags_and_attributes,
+        share_mode,
+        _7,
+        _8,
+        _9,
+        _10,
+      )
+    };
+    if res.is_ok()
+      && let Ok(path) = path
+    {
+      HANDLE_MAP.insert(handle, path, false);
+    }
+    res
+  }
 }

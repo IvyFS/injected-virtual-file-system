@@ -40,8 +40,8 @@ pub unsafe extern "system" fn detour_nt_open_file(
 ) -> NTSTATUS {
   let path = unsafe { original_attrs.path() };
   let virtual_res = trace_inspect!(unsafe {
-    let path = path.clone()?;
-    let virtual_path = get_virtual_path(&path)?.ok_or(HookError::NoVirtualPath)?;
+    let path = path.as_ref().map_err(Clone::clone)?;
+    let virtual_path = get_virtual_path(path)?.ok_or(HookError::NoVirtualPath)?;
     let owned_attrs = original_attrs.reroute(virtual_path.path)?;
     let attrs = &raw const owned_attrs.attrs;
 

@@ -16,6 +16,7 @@ patch_fn!(
   detour_delete_file_w
 );
 
+// TODO: delete "mounted" file at this path as well
 unsafe extern "system" fn detour_delete_file_w(path: PCWSTR) -> BOOL {
   trace_expr!(WIN_FALSE, unsafe {
     Ok(original_delete_file_w(
@@ -39,6 +40,9 @@ unsafe extern "system" fn detour_move_file_a(source: PCSTR, dest: PCSTR) -> BOOL
 }
 
 patch_fn!(MoveFileExA, (PCSTR, PCSTR, MOVE_FILE_FLAGS) -> BOOL, detour_move_file_ex_a);
+
+// TODO: moving a directory (which is done with MoveFileEx, etc) currently doesn't move any files in the mounted
+// directory with the virtual directory
 
 unsafe extern "system" fn detour_move_file_ex_a(
   source: PCSTR,
