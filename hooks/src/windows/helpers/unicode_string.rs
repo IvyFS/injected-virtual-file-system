@@ -6,11 +6,44 @@ use std::{
 };
 
 use shared_types::HookError;
-use widestring::U16CString;
+use widestring::{U16CString, error::ContainsNul};
 use win_api::{
-  Wdk::Storage::FileSystem::RtlInitUnicodeStringEx, Win32::Foundation::UNICODE_STRING,
+  Wdk::Storage::FileSystem::RtlInitUnicodeStringEx,
+  Win32::Foundation::{NTSTATUS, UNICODE_STRING},
 };
 use win_types::PCWSTR;
+
+#[derive(Debug)]
+pub enum UnicodeError {
+  ContainsNul {
+    source_str: OsString,
+    err: ContainsNul<u16>,
+  },
+  NtInit {
+    source_str: OsString,
+    nt_status: NTSTATUS,
+  },
+}
+
+impl From<UnicodeError> for HookError {
+  fn from(value: UnicodeError) -> Self {
+    match value {
+      UnicodeError::ContainsNul { source_str, err } => HookError::UnicodeInit {
+        source_str: source_str,
+        nt_status: None,
+        contains_nul: Some(err),
+      },
+      UnicodeError::NtInit {
+        source_str,
+        nt_status,
+      } => HookError::UnicodeInit {
+        source_str: source_str,
+        nt_status: Some(nt_status.0),
+        contains_nul: None,
+      },
+    }
+  }
+}
 
 pub struct OwnedUnicodeString {
   pub string_buffer: widestring::U16CString,
@@ -22,7 +55,7 @@ impl OwnedUnicodeString {
     base: impl AsRef<OsStr>,
     prefix: Option<impl AsRef<OsStr>>,
     suffix: Option<impl AsRef<OsStr>>,
-  ) -> Result<Self, HookError> {
+  ) -> Result<Self, UnicodeError> {
     let (str_owner, unicode) = unsafe { format_unicode_string(base, prefix, suffix)? };
     Ok(OwnedUnicodeString {
       string_buffer: str_owner,
@@ -30,7 +63,7 @@ impl OwnedUnicodeString {
     })
   }
 
-  pub unsafe fn path_to_unicode_nt_path(path: impl AsRef<Path>) -> Result<Self, HookError> {
+  pub unsafe fn path_to_unicode_nt_path(path: impl AsRef<Path>) -> Result<Self, UnicodeError> {
     Self::new(path.as_ref(), Some("\\??\\"), nil_fix())
   }
 }
@@ -49,16 +82,17 @@ pub const fn nil_fix() -> Option<&'static str> {
 }
 
 impl TryFrom<PCWSTR> for OwnedUnicodeString {
-  type Error = HookError;
+  type Error = UnicodeError;
 
-  fn try_from(pcwstr: PCWSTR) -> Result<OwnedUnicodeString, HookError> {
+  fn try_from(pcwstr: PCWSTR) -> Result<OwnedUnicodeString, Self::Error> {
     let mut unicode = UNICODE_STRING::default();
     let res = unsafe { RtlInitUnicodeStringEx(&mut unicode, pcwstr) };
 
     if res.is_err() {
-      Err(HookError::UnicodeInit(OsString::from_wide(unsafe {
-        pcwstr.as_wide()
-      })))
+      Err(UnicodeError::NtInit {
+        source_str: OsString::from_wide(unsafe { pcwstr.as_wide() }),
+        nt_status: res,
+      })
     } else {
       Ok(OwnedUnicodeString {
         string_buffer: Default::default(),
@@ -69,7 +103,7 @@ impl TryFrom<PCWSTR> for OwnedUnicodeString {
 }
 
 impl TryFrom<&Path> for OwnedUnicodeString {
-  type Error = HookError;
+  type Error = UnicodeError;
 
   fn try_from(value: &Path) -> Result<Self, Self::Error> {
     unsafe { OwnedUnicodeString::path_to_unicode_nt_path(value) }
@@ -77,7 +111,7 @@ impl TryFrom<&Path> for OwnedUnicodeString {
 }
 
 impl TryFrom<&OsStr> for OwnedUnicodeString {
-  type Error = HookError;
+  type Error = UnicodeError;
 
   fn try_from(value: &OsStr) -> Result<Self, Self::Error> {
     OwnedUnicodeString::new(value, nil_fix(), nil_fix())
@@ -85,7 +119,7 @@ impl TryFrom<&OsStr> for OwnedUnicodeString {
 }
 
 impl TryFrom<U16CString> for OwnedUnicodeString {
-  type Error = HookError;
+  type Error = UnicodeError;
 
   fn try_from(wide_str: U16CString) -> Result<Self, Self::Error> {
     let mut unicode = UNICODE_STRING::default();
@@ -98,7 +132,10 @@ impl TryFrom<U16CString> for OwnedUnicodeString {
         unicode_ptr: Box::into_raw(Box::new(unicode)),
       })
     } else {
-      Err(HookError::UnicodeInit(wide_str.to_os_string()))
+      Err(UnicodeError::NtInit {
+        source_str: wide_str.to_os_string(),
+        nt_status: res,
+      })
     }
   }
 }
@@ -107,7 +144,7 @@ pub unsafe fn format_unicode_string(
   base: impl AsRef<OsStr>,
   prefix: Option<impl AsRef<OsStr>>,
   suffix: Option<impl AsRef<OsStr>>,
-) -> Result<(widestring::U16CString, UNICODE_STRING), HookError> {
+) -> Result<(widestring::U16CString, UNICODE_STRING), UnicodeError> {
   let path = base.as_ref();
   unsafe {
     let mut unicode = UNICODE_STRING::default();
@@ -118,13 +155,19 @@ pub unsafe fn format_unicode_string(
     if let Some(suffix) = suffix {
       wide_str.push_os_str(suffix);
     }
-    let wide_str = widestring::U16CString::from_ustr(wide_str)
-      .map_err(|_| HookError::UnicodeInit(path.to_owned()))?;
+    let wide_str =
+      widestring::U16CString::from_ustr(wide_str).map_err(|err| UnicodeError::ContainsNul {
+        source_str: path.to_owned(),
+        err,
+      })?;
     let pcwstr = PCWSTR::from_raw(wide_str.as_ptr());
     let res = RtlInitUnicodeStringEx(&mut unicode, pcwstr);
 
     if res.is_err() {
-      Err(HookError::UnicodeInit(path.to_owned()))
+      Err(UnicodeError::NtInit {
+        source_str: path.to_owned(),
+        nt_status: res,
+      })
     } else {
       Ok((wide_str, unicode))
     }

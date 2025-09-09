@@ -39,8 +39,12 @@ impl VirtualPath {
   }
 }
 
-impl VirtualPath<Box<[u8]>, PCSTR> {
-  pub fn as_raw_ansi(&mut self) -> PCSTR {
+pub trait VirtualAsRaw<RAW> {
+  fn as_raw(&mut self) -> RAW;
+}
+
+impl VirtualAsRaw<PCSTR> for VirtualPath<Box<[u8]>, PCSTR> {
+  fn as_raw(&mut self) -> PCSTR {
     let boxed = self
       .path
       .as_os_str()
@@ -54,29 +58,13 @@ impl VirtualPath<Box<[u8]>, PCSTR> {
   }
 }
 
-impl VirtualPath<U16CString, PCWSTR> {
-  pub fn as_raw_wide(&mut self) -> PCWSTR {
+impl VirtualAsRaw<PCWSTR> for VirtualPath<U16CString, PCWSTR> {
+  fn as_raw(&mut self) -> PCWSTR {
     let owned = widestring::U16CString::from_os_str_truncate(&self.path);
     let wide_ptr = PCWSTR::from_raw(owned.as_ptr());
     self.raw_virtual_path = Some(owned);
 
     wide_ptr
-  }
-}
-
-pub trait VirtualAsRaw<RAW> {
-  fn as_raw(&mut self) -> RAW;
-}
-
-impl VirtualAsRaw<PCSTR> for VirtualPath<Box<[u8]>, PCSTR> {
-  fn as_raw(&mut self) -> PCSTR {
-    self.as_raw_ansi()
-  }
-}
-
-impl VirtualAsRaw<PCWSTR> for VirtualPath<U16CString, PCWSTR> {
-  fn as_raw(&mut self) -> PCWSTR {
-    self.as_raw_wide()
   }
 }
 
@@ -124,7 +112,7 @@ pub fn get_virtual_path_or<BUF, RAW>(
 }
 
 pub fn get_virtual_path_or_ansi(path: PCSTR) -> VirtualPathResult<Box<[u8]>, PCSTR> {
-  let given_path = { Path::new(unsafe { str::from_utf8_unchecked(path.as_bytes()) }) };
+  let given_path = Path::new(unsafe { str::from_utf8_unchecked(path.as_bytes()) });
   let canon = canonise_relative_current_dir(given_path)?;
 
   get_virtual_path_or(canon, path)

@@ -20,9 +20,9 @@ pub enum HookError {
   #[error("json error: {0}")]
   JsonError(#[from] serde_json::error::Error),
 
-  #[error("Failed to cast raw const ptr of type {typ} to {} reference", unsafe_ptr_cast_ref_type(*mutable_ref))]
+  #[error("Failed to cast raw const ptr of type {typ} to {} reference", unsafe_ptr_cast_ref_type(*.mutable_ref))]
   RawConstPtrCast { typ: String, mutable_ref: bool },
-  #[error("Failed to cast raw mut ptr of type {typ} to {} reference", unsafe_ptr_cast_ref_type(*mutable_ref))]
+  #[error("Failed to cast raw mut ptr of type {typ} to {} reference", unsafe_ptr_cast_ref_type(*.mutable_ref))]
   RawMutPtrCast { typ: String, mutable_ref: bool },
 
   #[cfg(windows)]
@@ -32,8 +32,12 @@ pub enum HookError {
   #[error("Failed to get path from file handle")]
   PathFromFileHandle,
   #[cfg(windows)]
-  #[error("Failed to init UNICODE_STRING from {0:?}")]
-  UnicodeInit(OsString),
+  #[error("Failed to init UNICODE_STRING from {source_str:?}:\nNTSTATUS: {nt_status:#?}\ncontains_nul: {contains_nul:#?}", nt_status = .nt_status.map(|e| format!("{e:x}")))]
+  UnicodeInit {
+    source_str: OsString,
+    nt_status: Option<i32>,
+    contains_nul: Option<widestring::error::ContainsNul<u16>>,
+  },
   #[cfg(windows)]
   #[error("windows-core error: {0:?}")]
   WindowsCore(#[source] Box<dyn Error>),
@@ -48,7 +52,7 @@ pub enum HookError {
   NoVirtualPath,
 
   #[error("std::io::Error {0}")]
-  StdIo(#[from] std::io::Error),
+  StdIO(#[from] std::io::Error),
   #[error("error: {source}\nadditional context: {context}")]
   WithContext {
     #[source]

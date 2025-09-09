@@ -2,22 +2,19 @@ use std::{
   ffi::{OsString, c_void},
   hash::Hash,
   ops::Deref,
-  os::windows::{ffi::OsStringExt, fs::OpenOptionsExt, io::IntoRawHandle},
+  os::windows::ffi::OsStringExt,
   path::{Path, PathBuf},
   sync::{Arc, LazyLock},
 };
 
 use dashmap::DashMap;
 use ref_cast::RefCast;
-use shared_types::{ErrorContext, HookError};
+use shared_types::HookError;
 use win_api::{
   Wdk::Foundation::OBJECT_ATTRIBUTES,
   Win32::{
     Foundation::HANDLE,
-    Storage::FileSystem::{
-      FILE_ATTRIBUTE_OFFLINE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAGS_AND_ATTRIBUTES,
-      GETFINALPATHNAMEBYHANDLE_FLAGS, GetFinalPathNameByHandleW,
-    },
+    Storage::FileSystem::{GETFINALPATHNAMEBYHANDLE_FLAGS, GetFinalPathNameByHandleW},
   },
 };
 
@@ -29,8 +26,6 @@ use crate::{
 
 #[allow(dead_code)]
 pub const NULL_HANDLE: HANDLE = HANDLE(std::ptr::null_mut());
-
-pub const DO_NOT_HOOK: FILE_FLAGS_AND_ATTRIBUTES = FILE_ATTRIBUTE_OFFLINE;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, RefCast)]
 #[repr(transparent)]
@@ -92,17 +87,6 @@ unsafe impl Send for Handle {}
 unsafe impl Sync for Handle {}
 
 pub static HANDLE_MAP: LazyLock<HandleMap> = LazyLock::new(Default::default);
-
-pub fn std_open_dir_handle_unhooked(path: impl AsRef<Path>) -> Result<Handle, HookError> {
-  let handle = std::fs::File::options()
-    .read(true)
-    .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
-    // .share_mode(DEFAULT_SHARE_MODE | DO_NOT_HOOK.0)
-    .attributes(DO_NOT_HOOK.0)
-    .open(path.as_ref())
-    .with_context(|| format!("path = {:?}", path.as_ref()))?;
-  Ok(handle.into_raw_handle().into())
-}
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]

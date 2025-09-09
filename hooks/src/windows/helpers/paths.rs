@@ -15,6 +15,7 @@ pub fn canonise_relative_current_dir<'a>(
   let mut given_path = given_path.into();
   if given_path.is_relative() {
     let given_path = Cow::to_mut(&mut given_path);
+    // TODO: make sure this is unhooked
     let mut current_dir = std::env::current_dir()?;
 
     // Swap the contents of these two PathBufs as we want the result to end up in the `given_path: &mut Cow`, but need

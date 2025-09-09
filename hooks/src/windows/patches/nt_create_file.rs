@@ -56,6 +56,8 @@ pub(crate) unsafe extern "system" fn detour_nt_create_file(
 ) -> NTSTATUS {
   let path = unsafe { original_attrs.path() };
   let virtual_res = trace_inspect!(unsafe {
+    // TODO: if creating check that file/folder doesn't exist at original path
+
     let path = path.as_ref().map_err(Clone::clone)?;
     let virtual_path = get_virtual_path(path)?.ok_or(HookError::NoVirtualPath)?;
     let owned_attrs = original_attrs.reroute(virtual_path.path)?;

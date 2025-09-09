@@ -17,7 +17,10 @@ use crate::{
   log::trace_expr,
   virtual_paths::windows::get_virtual_path,
   windows::{
-    helpers::handles::{HANDLE_MAP, Handle, into_handle, std_open_dir_handle_unhooked},
+    helpers::{
+      handles::{HANDLE_MAP, Handle, into_handle},
+      unhooked_fs,
+    },
     patches::nt_close_detour,
   },
 };
@@ -90,7 +93,7 @@ unsafe extern "system" fn detour_nt_query_directory_file(
       .flatten()
     {
       **QUERY_MAP.get_or_insert_query(original_handle, || {
-        std_open_dir_handle_unhooked(virtual_path.path)
+        Ok(unhooked_fs::nt_open(virtual_path.path, true)?)
       })?
     } else {
       original_handle
@@ -163,7 +166,7 @@ unsafe extern "system" fn detour_nt_query_directory_file_ex(
       .flatten()
     {
       **QUERY_MAP.get_or_insert_query(original_handle, || {
-        std_open_dir_handle_unhooked(virtual_path.path)
+        Ok(unhooked_fs::nt_open(virtual_path.path, true)?)
       })?
     } else {
       original_handle
