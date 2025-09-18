@@ -192,7 +192,7 @@ fn await_process(pid: u32) -> impl Future<Output = Result<u32, tokio::task::Join
       let mut exit_code = MaybeUninit::uninit();
       unsafe {
         GetExitCodeProcess(process, exit_code.as_mut_ptr()).expect("Get process exit code");
-        dbg!(exit_code.assume_init())
+        exit_code.assume_init()
       }
     } else {
       panic!(

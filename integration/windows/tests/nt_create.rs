@@ -24,7 +24,7 @@ fn should_fail() {
 }
 
 #[ctest(crate::TESTS)]
-fn mkdir_creates_dir_in_virtual_fs() {
+fn mkdir_at_virtual_path_creates_in_virtual_fs() {
   let mut test_harness = TestHarness::new(NT_OPEN_CREATE_BIN);
 
   test_harness.set_args([
@@ -34,8 +34,31 @@ fn mkdir_creates_dir_in_virtual_fs() {
     "--create-not-exists",
   ]);
 
-  assert!(test_harness.spawn_output().status.success());
+  let (output, stdout, stderr) = test_harness.spawn_output_and_stdio();
+
+  eprintln!("{stdout}\n{stderr}");
+  assert!(output.status.success(), "{stdout}\n{stderr}");
   assert!(test_harness.virtual_expected().is_dir());
+  assert!(!test_harness.mount_expected().is_dir());
+}
+
+#[ctest(crate::TESTS)]
+fn mkdir_at_mounted_path_creates_in_virtual_fs() {
+  let mut test_harness = TestHarness::new(NT_OPEN_CREATE_BIN);
+
+  test_harness.set_args([
+    "--is-dir",
+    &test_harness.mount_expected_str(),
+    "create",
+    "--create-not-exists",
+  ]);
+
+  let (output, stdout, stderr) = test_harness.spawn_output_and_stdio();
+
+  eprintln!("{stdout}\n{stderr}");
+  assert!(output.status.success(), "{stdout}\n{stderr}");
+  assert!(test_harness.virtual_expected().is_dir());
+  assert!(!test_harness.mount_expected().is_dir());
 }
 
 #[ctest(crate::TESTS)]

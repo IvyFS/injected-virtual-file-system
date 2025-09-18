@@ -19,7 +19,7 @@ unsafe extern "system" fn detour_create_directory_w(
 
     // check that folder doesn't exist at original path
     if let Ok(virtual_path) = &virtual_path_res
-      && unhooked_fs::path_exists(virtual_path.original.as_path(), true)?
+      && unhooked_fs::exists_by_path(virtual_path.original.as_path(), true)?
     {
       return Ok(WIN_FALSE);
     }

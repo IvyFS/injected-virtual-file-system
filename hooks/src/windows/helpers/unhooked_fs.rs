@@ -1,8 +1,10 @@
 use std::{
   borrow::Cow,
   ffi::OsString,
+  io::ErrorKind,
   os::windows::ffi::OsStringExt,
   path::{Path, PathBuf},
+  ptr::{null, null_mut},
 };
 
 use shared_types::HookError;
@@ -13,7 +15,7 @@ use win_api::{
     System::SystemServices::FILE_SHARE_VALID_FLAGS,
   },
   Win32::{
-    Foundation::{HANDLE, NTSTATUS, STATUS_NO_SUCH_FILE},
+    Foundation::{HANDLE, NTSTATUS, OBJECT_ATTRIBUTE_FLAGS, STATUS_OBJECT_NAME_NOT_FOUND},
     Storage::FileSystem::{FILE_GENERIC_READ, FILE_LIST_DIRECTORY},
     System::IO::IO_STATUS_BLOCK,
   },
@@ -25,21 +27,41 @@ use crate::windows::{
   patches::original_nt_open_file,
 };
 
-#[derive(Debug)]
 pub enum UnhookedFsError {
   UnicodeError(UnicodeError),
-  NoSuchFile,
-  Other(NTSTATUS),
+  OS {
+    nt_status: NTSTATUS,
+    std: std::io::Error,
+  },
+}
+
+impl std::fmt::Debug for UnhookedFsError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::UnicodeError(arg0) => f.debug_tuple("UnicodeError").field(arg0).finish(),
+      Self::OS { nt_status, std } => f
+        .debug_struct("OS")
+        .field("nt_status", &format_args!("{:x}", nt_status.0))
+        .field("std", std)
+        .finish(),
+    }
+  }
+}
+
+impl From<NTSTATUS> for UnhookedFsError {
+  fn from(value: NTSTATUS) -> Self {
+    Self::OS {
+      nt_status: value,
+      std: std::io::Error::from_raw_os_error(value.0),
+    }
+  }
 }
 
 impl From<UnhookedFsError> for HookError {
   fn from(value: UnhookedFsError) -> Self {
     match value {
       UnhookedFsError::UnicodeError(unicode_error) => unicode_error.into(),
-      UnhookedFsError::NoSuchFile => HookError::StdIO(std::io::ErrorKind::NotFound.into()),
-      UnhookedFsError::Other(ntstatus) => {
-        HookError::StdIO(std::io::Error::other(format!("{:x}", ntstatus.0)))
-      }
+      UnhookedFsError::OS { std, .. } => HookError::StdIo(std),
     }
   }
 }
@@ -72,11 +94,44 @@ impl<'a> From<&'a Path> for PathLike<'a> {
   }
 }
 
-pub fn nt_open<'a>(path: impl Into<PathLike<'a>>, is_dir: bool) -> Result<HANDLE, UnhookedFsError> {
-  let path = path.into();
+struct OwnedObjectAttributes {
+  _unicode_path: OwnedUnicodeString,
+  obj_attrs: OBJECT_ATTRIBUTES,
+}
 
+impl OwnedObjectAttributes {
+  fn new<'a>(path: impl Into<PathLike<'a>>) -> Result<Self, UnhookedFsError> {
+    let path = path.into();
+
+    let unicode_path = unsafe { OwnedUnicodeString::path_to_unicode_nt_path(&path.0) }
+      .map_err(UnhookedFsError::UnicodeError)?;
+    let obj_attrs = OBJECT_ATTRIBUTES {
+      Length: size_of::<OBJECT_ATTRIBUTES>() as u32,
+      RootDirectory: HANDLE(null_mut()),
+      ObjectName: unicode_path.unicode_ptr,
+      Attributes: OBJECT_ATTRIBUTE_FLAGS::default(),
+      SecurityDescriptor: null(),
+      SecurityQualityOfService: null(),
+    };
+
+    Ok(Self {
+      _unicode_path: unicode_path,
+      obj_attrs,
+    })
+  }
+}
+
+pub fn nt_open_by_path<'a>(
+  path: impl Into<PathLike<'a>>,
+  is_dir: bool,
+) -> Result<HANDLE, UnhookedFsError> {
+  let obj_attrs = OwnedObjectAttributes::new(path)?;
+
+  nt_open(&obj_attrs.obj_attrs, is_dir).map_err(Into::into)
+}
+
+pub fn nt_open(obj_attrs: &OBJECT_ATTRIBUTES, is_dir: bool) -> Result<HANDLE, NTSTATUS> {
   let mut handle = HANDLE::default();
-  let object_attributes = create_obj_attributes(&path.0)?;
   let mut io_status_block = IO_STATUS_BLOCK::default();
   let (desired_access, open_options) = if is_dir {
     (FILE_LIST_DIRECTORY, FILE_DIRECTORY_FILE)
@@ -88,50 +143,38 @@ pub fn nt_open<'a>(path: impl Into<PathLike<'a>>, is_dir: bool) -> Result<HANDLE
     original_nt_open_file(
       &raw mut handle,
       desired_access.0,
-      &raw const object_attributes.obj_attrs,
+      obj_attrs,
       &raw mut io_status_block,
       FILE_SHARE_VALID_FLAGS,
       open_options.0,
     )
   };
 
-  match status {
-    _ if status.is_ok() => Ok(handle),
-    STATUS_NO_SUCH_FILE => Err(UnhookedFsError::NoSuchFile),
-    status => Err(UnhookedFsError::Other(status)),
+  if status.is_ok() {
+    Ok(handle)
+  } else {
+    Err(status)
   }
 }
 
-struct OwnedObjAttributes {
-  obj_attrs: OBJECT_ATTRIBUTES,
-  _unicode_path: OwnedUnicodeString,
-}
-
-fn create_obj_attributes(
-  absolute_path: impl AsRef<Path>,
-) -> Result<OwnedObjAttributes, UnhookedFsError> {
-  let unicode_path = unsafe { OwnedUnicodeString::path_to_unicode_nt_path(absolute_path) }
-    .map_err(UnhookedFsError::UnicodeError)?;
-
-  let mut obj_attrs = OBJECT_ATTRIBUTES::default();
-
-  obj_attrs.Length = size_of::<OBJECT_ATTRIBUTES>() as u32;
-  obj_attrs.ObjectName = unicode_path.unicode_ptr;
-  Ok(OwnedObjAttributes {
-    obj_attrs,
-    _unicode_path: unicode_path,
-  })
-}
-
-pub fn path_exists<'a>(
+pub fn exists_by_path<'a>(
   path: impl Into<PathLike<'a>>,
   is_dir: bool,
 ) -> Result<bool, UnhookedFsError> {
-  let res = nt_open(path, is_dir);
+  let obj_attrs = OwnedObjectAttributes::new(path)?;
 
-  match res {
+  exists(&obj_attrs.obj_attrs, is_dir).map_err(Into::into)
+}
+
+pub fn exists(obj_attrs: &OBJECT_ATTRIBUTES, is_dir: bool) -> Result<bool, NTSTATUS> {
+  match nt_open(&obj_attrs, is_dir) {
     Ok(_) => Ok(true),
-    Err(UnhookedFsError::NoSuchFile) => Ok(false),
+    Err(err)
+      if err == STATUS_OBJECT_NAME_NOT_FOUND
+        || std::io::Error::from_raw_os_error(err.0).kind() == ErrorKind::NotFound =>
+    {
+      Ok(false)
+    }
     Err(err) => Err(err),
   }
 }

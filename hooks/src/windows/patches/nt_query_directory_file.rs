@@ -93,7 +93,7 @@ unsafe extern "system" fn detour_nt_query_directory_file(
       .flatten()
     {
       **QUERY_MAP.get_or_insert_query(original_handle, || {
-        Ok(unhooked_fs::nt_open(virtual_path.path, true)?)
+        Ok(unhooked_fs::nt_open_by_path(virtual_path.path, true)?)
       })?
     } else {
       original_handle
@@ -166,7 +166,7 @@ unsafe extern "system" fn detour_nt_query_directory_file_ex(
       .flatten()
     {
       **QUERY_MAP.get_or_insert_query(original_handle, || {
-        Ok(unhooked_fs::nt_open(virtual_path.path, true)?)
+        Ok(unhooked_fs::nt_open_by_path(virtual_path.path, true)?)
       })?
     } else {
       original_handle

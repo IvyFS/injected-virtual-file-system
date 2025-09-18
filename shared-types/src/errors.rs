@@ -52,7 +52,7 @@ pub enum HookError {
   NoVirtualPath,
 
   #[error("std::io::Error {0}")]
-  StdIO(#[from] std::io::Error),
+  StdIo(#[from] std::io::Error),
   #[error("error: {source}\nadditional context: {context}")]
   WithContext {
     #[source]
