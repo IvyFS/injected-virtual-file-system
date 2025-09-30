@@ -24,6 +24,10 @@ win-api = { workspace = true }
 win-types = { workspace = true }
 windows-strings = { workspace = true }
 windows-version = { workspace = true }
+windows-link = { workspace = true }
+
+[dev-dependencies]
+tempdir = { workspace = true }
 
 [lints]
 workspace = true

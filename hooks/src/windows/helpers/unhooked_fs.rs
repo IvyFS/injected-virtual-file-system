@@ -11,11 +11,17 @@ use shared_types::HookError;
 use win_api::{
   Wdk::{
     Foundation::OBJECT_ATTRIBUTES,
-    Storage::FileSystem::{FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE},
+    Storage::FileSystem::{
+      FILE_DIRECTORY_FILE, FILE_DIRECTORY_INFORMATION, FILE_NON_DIRECTORY_FILE,
+      FileDirectoryInformation,
+    },
     System::SystemServices::FILE_SHARE_VALID_FLAGS,
   },
   Win32::{
-    Foundation::{HANDLE, NTSTATUS, OBJECT_ATTRIBUTE_FLAGS, STATUS_OBJECT_NAME_NOT_FOUND},
+    Foundation::{
+      HANDLE, NTSTATUS, OBJECT_ATTRIBUTE_FLAGS, STATUS_NO_MORE_FILES, STATUS_OBJECT_NAME_NOT_FOUND,
+      STATUS_SUCCESS,
+    },
     Storage::FileSystem::{FILE_GENERIC_READ, FILE_LIST_DIRECTORY},
     System::IO::IO_STATUS_BLOCK,
   },
@@ -23,8 +29,11 @@ use win_api::{
 use win_types::{PCSTR, PCWSTR};
 
 use crate::windows::{
-  helpers::unicode_string::{OwnedUnicodeString, UnicodeError},
-  patches::original_nt_open_file,
+  helpers::{
+    handles::NULL_HANDLE,
+    unicode_string::{OwnedUnicodeString, UnicodeError},
+  },
+  patches::{original_nt_open_file, original_nt_query_directory_file_ex},
 };
 
 pub enum UnhookedFsError {
@@ -176,5 +185,134 @@ pub fn exists(obj_attrs: &OBJECT_ATTRIBUTES, is_dir: bool) -> Result<bool, NTSTA
       Ok(false)
     }
     Err(err) => Err(err),
+  }
+}
+
+pub fn read_dir<'a>(path: impl Into<PathLike<'a>>) -> Result<Vec<PathBuf>, UnhookedFsError> {
+  const BUF_LEN: usize = 1024;
+
+  let handle = nt_open_by_path(path, true)?;
+
+  let mut filenames = Vec::new();
+  loop {
+    let mut io_status_block: IO_STATUS_BLOCK = Default::default();
+    let mut file_infomation = [0u8; BUF_LEN];
+    unsafe {
+      let (prefix, aligned, _suffix) = file_infomation.align_to_mut::<FILE_DIRECTORY_INFORMATION>();
+
+      let status = original_nt_query_directory_file_ex(
+        handle,
+        NULL_HANDLE,
+        Default::default(),
+        null(),
+        &raw mut io_status_block,
+        aligned.as_mut_ptr() as _,
+        BUF_LEN as u32 - prefix.len() as u32,
+        FileDirectoryInformation,
+        0,
+        null(),
+      );
+      match status {
+        STATUS_SUCCESS => {}
+        STATUS_NO_MORE_FILES => break,
+        err => return Err(err.into()),
+      }
+
+      let mut offset = 0;
+      loop {
+        let info = &*aligned.as_ptr().byte_add(offset);
+        debug_assert!(aligned.as_ptr_range().contains(&&raw const *info));
+
+        let filename = widestring::U16CStr::from_ptr(
+          &raw const info.FileName[0],
+          (info.FileNameLength / 2) as usize,
+        )
+        .unwrap();
+        filenames.push(PathBuf::from(filename.to_os_string()));
+
+        if info.NextEntryOffset == 0 {
+          break;
+        }
+        offset += info.NextEntryOffset as usize;
+      }
+    }
+  }
+
+  Ok(filenames)
+}
+
+#[cfg(test)]
+mod test {
+  use std::path::Path;
+
+  use tempdir::TempDir;
+
+  use crate::windows::helpers::unhooked_fs::read_dir;
+
+  #[test]
+  fn read_dir_empty() {
+    // setup
+    let tempdir = TempDir::new("unhooked_fs_test").unwrap();
+
+    // assert
+    let res = read_dir(tempdir.path());
+    assert_eq!(
+      vec![Path::new("."), Path::new("..")],
+      res.as_ref().unwrap().as_slice(),
+      "{res:#?}"
+    );
+  }
+
+  #[test]
+  fn read_dir_single_file() {
+    // setup
+    let tempdir = TempDir::new("unhooked_fs_test").unwrap();
+    std::fs::write(tempdir.path().join("foo.txt"), b"").unwrap();
+
+    // assert
+    let res = read_dir(tempdir.path());
+    assert_eq!(
+      vec![Path::new("."), "..".as_ref(), "foo.txt".as_ref()],
+      res.as_ref().unwrap().as_slice(),
+      "{res:#?}"
+    );
+  }
+
+  #[test]
+  fn read_dir_single_dir() {
+    // setup
+    let tempdir = TempDir::new("unhooked_fs_test").unwrap();
+    std::fs::create_dir(tempdir.path().join("foo")).unwrap();
+
+    // assert
+    let res = read_dir(tempdir.path());
+    assert_eq!(
+      vec![Path::new("."), "..".as_ref(), "foo".as_ref()],
+      res.as_ref().unwrap().as_slice(),
+      "{res:#?}"
+    );
+  }
+
+  #[test]
+  fn read_dir_file_and_dir() {
+    // setup
+    let tempdir = TempDir::new("unhooked_fs_test").unwrap();
+    std::fs::create_dir(tempdir.path().join("foo")).unwrap();
+    std::fs::write(tempdir.path().join("bar.txt"), b"").unwrap();
+    // this nested file should not be included in the output of `read_dir`
+    std::fs::write(tempdir.path().join("foo").join("baz.txt"), b"").unwrap();
+
+    // assert
+    let res = read_dir(tempdir.path());
+    assert_eq!(
+      vec![
+        Path::new("."),
+        "..".as_ref(),
+        "bar.txt".as_ref(),
+        "foo".as_ref(),
+      ],
+      res.as_ref().unwrap().as_slice(),
+      "{res:#?}"
+    );
   }
 }

@@ -47,6 +47,7 @@ impl QueryMap {
 }
 
 patch_fn!(
+  "ntdll.dll",
   NtQueryDirectoryFile,
   (
     HANDLE,
@@ -120,6 +121,7 @@ unsafe extern "system" fn detour_nt_query_directory_file(
 }
 
 patch_fn!(
+  "ntdll.dll",
   NtQueryDirectoryFileEx,
   (
     HANDLE,

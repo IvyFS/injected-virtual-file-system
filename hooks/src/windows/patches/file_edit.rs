@@ -19,11 +19,25 @@ patch_fn!(
 // TODO: delete "mounted" file at this path as well
 unsafe extern "system" fn detour_delete_file_w(path: PCWSTR) -> BOOL {
   trace_expr!(WIN_FALSE, unsafe {
-    Ok(original_delete_file_w(
-      get_virtual_path_or_wide(path)?.as_raw_or_original(),
-    ))
+    let mut virtual_path_res = get_virtual_path_or_wide(path)?;
+
+    let res = original_delete_file_w(virtual_path_res.as_raw_or_original());
+
+    if res.as_bool() && virtual_path_res.is_ok() {
+      Ok(original_delete_file_w(path))
+    } else {
+      Ok(res)
+    }
   })
 }
+
+// TODO: moving a directory (which is done with MoveFile, MoveFileEx, etc) currently doesn't move any files in the mounted
+// directory with the virtual directory
+// 1. move underlying file / folder
+// 2. if err return it
+// 3. figure out if source is directory
+// 4. recursively replace files in lower folder over files in lower folder where conflict
+// 5. if no conflict simply move upper file / folder to target destination
 
 patch_fn!(MoveFileA, (PCSTR, PCSTR) -> BOOL, detour_move_file_a);
 
@@ -40,9 +54,6 @@ unsafe extern "system" fn detour_move_file_a(source: PCSTR, dest: PCSTR) -> BOOL
 }
 
 patch_fn!(MoveFileExA, (PCSTR, PCSTR, MOVE_FILE_FLAGS) -> BOOL, detour_move_file_ex_a);
-
-// TODO: moving a directory (which is done with MoveFileEx, etc) currently doesn't move any files in the mounted
-// directory with the virtual directory
 
 unsafe extern "system" fn detour_move_file_ex_a(
   source: PCSTR,

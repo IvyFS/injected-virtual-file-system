@@ -18,6 +18,7 @@ use crate::{
 };
 
 patch_fn!(
+  "ntdll.dll",
   NtOpenFile,
   (
     *mut HANDLE,

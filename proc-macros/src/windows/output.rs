@@ -1,5 +1,5 @@
 use quote::{ToTokens, quote};
-use unsynn::{Colon, CommaDelimitedVec, Cons, Ident, ToTokens as _, TokenStream};
+use unsynn::{Colon, CommaDelimitedVec, Cons, Ident, Literal, ToTokens as _, TokenStream};
 
 use crate::windows::Typ;
 
@@ -34,7 +34,6 @@ impl ToTokens for Output {
 
 pub(crate) struct Mod {
   name: Ident,
-  // _: common imports,
   default_detour: Option<DefaultDetour>,
   target_signature: TargetSignature,
   original_fn_ptr_cell: OriginalFn,
@@ -182,6 +181,30 @@ impl ToTokens for TargetSignature {
   }
 }
 
+pub(crate) struct LinkOriginal {
+  module: Literal,
+  target_ident: Ident,
+  original_fn_args: TokenStream,
+  original_fn_returns: Option<TokenStream>,
+}
+
+impl ToTokens for LinkOriginal {
+  fn to_tokens(&self, tokens: &mut TokenStream) {
+    let Self {
+      module,
+      target_ident,
+      original_fn_args,
+      original_fn_returns,
+    } = self;
+
+    let output = quote! {
+      windows_link::link!(#module "system" fn #target_ident(#original_fn_args) #original_fn_returns);
+    };
+
+    quote::ToTokens::to_tokens(&output, tokens);
+  }
+}
+
 pub(crate) struct OriginalFn {
   cell_name: Ident,
   target_sig_name: Ident,
@@ -190,6 +213,7 @@ pub(crate) struct OriginalFn {
   original_fn_returns: Option<TokenStream>,
   original_fn_bindings: TokenStream,
   detour_name: Ident,
+  link: Option<LinkOriginal>,
 }
 
 impl OriginalFn {
@@ -201,15 +225,25 @@ impl OriginalFn {
     original_fn_returns: Option<Typ>,
     original_fn_bindings: CommaDelimitedVec<Ident>,
     detour_name: Ident,
+    link: Option<(Literal, Ident)>,
   ) -> Self {
+    let original_fn_args = original_fn_args.to_token_stream();
+    let original_fn_returns = map_return_fragment(original_fn_returns);
+    let link = link.map(|(module, target_ident)| LinkOriginal {
+      module,
+      target_ident,
+      original_fn_args: original_fn_args.clone(),
+      original_fn_returns: original_fn_returns.clone(),
+    });
     Self {
       cell_name,
       target_sig_name,
       original_fn_name,
-      original_fn_args: original_fn_args.to_token_stream(),
-      original_fn_returns: map_return_fragment(original_fn_returns),
+      original_fn_args,
+      original_fn_returns,
       original_fn_bindings: original_fn_bindings.to_token_stream(),
       detour_name,
+      link,
     }
   }
 }
@@ -224,9 +258,18 @@ impl ToTokens for OriginalFn {
       original_fn_returns,
       original_fn_bindings,
       detour_name,
+      link,
     } = self;
 
+    let detour_name = if let Some(link) = &link {
+      &link.target_ident
+    } else {
+      detour_name
+    };
+
     let output = quote! {
+      #link
+
       pub static #cell_name: shared_types::unsafe_types::SyncUnsafeCell<#target_sig_name> =
         shared_types::unsafe_types::SyncUnsafeCell::new(#detour_name);
 

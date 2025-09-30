@@ -44,7 +44,7 @@ fn main() {
 
 pub fn query_directory_file_all(handle: HANDLE) -> Vec<U16CString> {
   const BUF_LEN: usize = 1024;
-
+  
   let mut res = Vec::new();
   loop {
     let mut io_status_block: IO_STATUS_BLOCK = Default::default();

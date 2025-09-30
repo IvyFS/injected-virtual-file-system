@@ -1,9 +1,10 @@
 use quote::format_ident;
 use unsynn::{
-  Colon, Comma, CommaDelimitedVec, Cons, Delimited, DelimitedVec, Either, Except, Gt, IParse,
-  Ident, Lt, Many, Nothing, ParenthesisGroupContaining, RArrow, Span, ToTokens, TokenIter,
-  TokenStream, TokenTree, unsynn,
+  Colon, Comma, CommaDelimitedVec, Cons, Delimited, DelimitedVec, Except, IParse, Ident, Literal,
+  Many, Nothing, ParenthesisGroupContaining, RArrow, Span, ToTokens, TokenIter, TokenStream,
+  unsynn,
 };
+use unsynn_rust::AngleTokenTree;
 
 use crate::windows::output::{
   DefaultDetour, FnImplArg, Mod, OriginalFn, Output, Patcher, TargetSignature,
@@ -15,13 +16,8 @@ pub(crate) type VerbatimUntil<C> = Many<Cons<Except<C>, AngleTokenTree>>;
 pub(crate) type Typ = VerbatimUntil<Comma>;
 
 unsynn! {
-  #[derive(Clone)]
-  pub struct AngleTokenTree(
-    #[allow(clippy::type_complexity)] // look,
-    pub Either<Cons<Lt, Vec<Cons<Except<Gt>, AngleTokenTree>>, Gt>, TokenTree>,
-  );
-
   struct Input {
+    module: Option<Cons<Literal, Comma>>,
     name: Ident,
     _comma: Comma,
     arg_types: ParenthesisGroupContaining<CommaDelimitedVec<Typ>>,
@@ -88,6 +84,9 @@ pub(crate) fn generate_patch(input: TokenStream) -> TokenStream {
     returns.clone(),
     map_args_to_comma_delim_vec(&args, Arg::get_ident),
     detour_name.clone(),
+    input
+      .module
+      .map(|tokens| (tokens.first, input.name.clone())),
   );
 
   let name = Ident::new(&snake_name, Span::call_site());
