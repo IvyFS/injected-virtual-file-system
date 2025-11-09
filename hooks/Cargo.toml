@@ -15,6 +15,10 @@ interprocess = { workspace = true }
 dashmap = "6.1.0"
 ext-trait = { workspace = true }
 crossbeam-queue = "0.3.12"
+rkyv = "0.8.12"
+redb = "3.1.0"
+thiserror.workspace = true
+castaway = "0.2.4"
 
 [target.'cfg(windows)'.dependencies]
 dunce = "1.0.5"
